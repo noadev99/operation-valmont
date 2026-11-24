@@ -413,7 +413,9 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   const dur = (sec) => sec % 60 ? `${Math.floor(sec / 60)} min ${sec % 60} s` : `${sec / 60} min`;
 
   /* ---------- état (gardé sur ce téléphone) ---------- */
-  const KEY = 'valmont-carnet';
+  // un carnet par joueur dans le même navigateur : #joueur1, #joueur2… (salle d'entraînement)
+  const slot = (location.hash.match(/joueur(\d)/) || [])[1];
+  const KEY = 'valmont-carnet' + (slot ? '-' + slot : '');
   const blank = () => ({ step: 'perso', name: '', role: -1, hp: 0, en: 0, gear: [], used: {}, prep: { minutes: 15, start: 0, end: 0, cur: null, done: {}, open: [], penalty: 0, order: [] }, boost: false, last: null });
   let S = blank();
   try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(blank(), JSON.parse(raw)); S.prep = Object.assign(blank().prep, S.prep || {}); } catch (e) {}

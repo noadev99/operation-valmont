@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Salle d'entraînement Valmont</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Stencil+One&family=Archivo:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Salle de régie : 4 appareils simulés (télé, console, deux téléphones) + un guide pas à pas en bandeau. */
+:root { --bg: #06090e; --panel: #0f1622; --panel2: #152030; --line: #263650; --fg: #e8eef6; --muted: #8a9ab0; --amber: #f0bd45; --blue: #5aa9ff; --red: #ff5a47; --green: #4fd38c; color-scheme: dark; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Archivo", system-ui, sans-serif; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px)); border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand b { font: 400 1.4rem "Saira Stencil One", Impact, sans-serif; display: block; line-height: 1; }
+.brand span { font: 500 .7rem "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; }
+.guide { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; min-width: 0; }
+.guide .nav { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); width: 38px; height: 38px; font: 700 1.1rem "JetBrains Mono", monospace; }
+.step { min-width: 0; display: grid; gap: 3px; }
+.step .t { font-weight: 700; font-size: .98rem; }
+.step .t small { font: 700 .72rem "JetBrains Mono", monospace; color: var(--amber); margin-right: 8px; }
+.step .lines { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .84rem; color: var(--muted); }
+.step .lines span b { font: 700 .66rem "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; margin-right: 6px; }
+.l-do b { color: var(--blue); } .l-pl b { color: var(--green); } .l-say b { color: var(--amber); }
+.tools { display: flex; gap: 6px; align-items: center; }
+.tools button, .tools a { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); padding: 8px 10px; font: 600 .78rem "JetBrains Mono", monospace; text-decoration: none; white-space: nowrap; }
+.tools button.warn { border-color: var(--red); color: var(--red); }
+main { display: grid; gap: 10px; padding: 10px max(10px, env(safe-area-inset-right, 0px)) 10px max(10px, env(safe-area-inset-left, 0px)); min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, .9fr) minmax(0, .42fr) minmax(0, .42fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "tv tv p1 p2" "mj mj p1 p2"; }
+main.focus { grid-template-columns: 1fr; grid-template-rows: 1fr; grid-template-areas: "f"; }
+main.focus .pane:not(.on) { display: none; }
+main.focus .pane.on { grid-area: f; }
+.pane { background: var(--panel); border: 1px solid var(--line); display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; }
+.pane[data-p="tv"] { grid-area: tv; } .pane[data-p="mj"] { grid-area: mj; } .pane[data-p="p1"] { grid-area: p1; } .pane[data-p="p2"] { grid-area: p2; }
+.ph { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); min-width: 0; }
+.ph b { font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ph b i { font-style: normal; font: 700 .66rem "JetBrains Mono", monospace; letter-spacing: .1em; padding: 2px 6px; margin-right: 6px; color: #06090e; }
+.ph button { background: none; border: 1px solid var(--line); color: var(--muted); font: 600 .7rem "JetBrains Mono", monospace; padding: 4px 8px; white-space: nowrap; }
+.stage { position: relative; overflow: hidden; min-height: 0; background: #000; }
+.stage iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; background: #0b1018; }
+.tabs { display: none; }
+@media (max-width: 900px) {
+  header { grid-template-columns: 1fr; }
+  main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "tabs" "f"; }
+  main .pane { grid-area: f; } main .pane:not(.on) { display: none; }
+  .tabs { display: grid; grid-area: tabs; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .tabs button { background: var(--panel2); color: var(--muted); border: 1px solid var(--line); padding: 8px 4px; font: 600 .75rem "JetBrains Mono", monospace; }
+  .tabs button.on { background: var(--amber); color: #1a1204; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>Entraînement</b><span>Opération Valmont · tous les rôles</span></div>
+  <div class="guide">
+    <button class="nav" id="prev" aria-label="Étape précédente">‹</button>
+    <div class="step" id="step" aria-live="polite"></div>
+    <button class="nav" id="next" aria-label="Étape suivante">›</button>
+  </div>
+  <div class="tools">
+    <a href="https://claude.ai/artifact/1YpRJhe5CXa3RsmAehT8L5" target="_blank" rel="noopener">Script du MJ</a>
+    <button class="warn" id="reset">Tout remettre à zéro</button>
+  </div>
+</header>
+<main id="grid">
+  <nav class="tabs" id="tabs" aria-label="Écrans"></nav>
+  <section class="pane" data-p="tv"><div class="ph"><b><i style="background:var(--amber)">TÉLÉ</i>Ce que voient les joueurs</b><button data-focus="tv">Agrandir</button></div><div class="stage"><iframe title="Télé" data-w="1280" data-h="720" src="ecran-valmont.html"></iframe></div></section>
+  <section class="pane" data-p="mj"><div class="ph"><b><i style="background:var(--blue)">MJ</i>Ta console</b><button data-focus="mj">Agrandir</button></div><div class="stage"><iframe title="Console MJ" data-w="820" data-h="1100" data-scroll="1" src="ecran-valmont.html#mj"></iframe></div></section>
+  <section class="pane" data-p="p1"><div class="ph"><b><i style="background:var(--green)">J1</i>Carnet joueur 1</b><button data-focus="p1">Agrandir</button></div><div class="stage"><iframe title="Carnet du joueur 1" data-w="390" data-h="844" src="carnet-braqueur.html#joueur1"></iframe></div></section>
+  <section class="pane" data-p="p2"><div class="ph"><b><i style="background:var(--green)">J2</i>Carnet joueur 2</b><button data-focus="p2">Agrandir</button></div><div class="stage"><iframe title="Carnet du joueur 2" data-w="390" data-h="844" src="carnet-braqueur.html#joueur2"></iframe></div></section>
+</main>
+
+<script>
+(function () {
+  /* Le guide : les grandes étapes du script du MJ, en version courte. */
+  const STEPS = [
+    ['Installation', 'Plateau : vérifie « Brouillard activé ». Si l\'écran n\'est pas vide, touche « Nouvelle partie » deux fois.', 'Rien encore.', 'Rien. Lance une musique d\'ambiance.'],
+    ['Création des braqueurs', 'L\'équipe : ajoute Joueur 1 et Joueur 2 avec le même nom et le même rôle que dans leurs carnets.', 'Dans chaque carnet : onglet 1 (nom de code, rôle), onglet 2 (4 points de matériel).', '« Choisissez un rôle chacun, puis votre matériel. »'],
+    ['Briefing dans la camionnette', 'Étage RDC. Mode Révéler : touche le grand hall (R1). Mode Montrer : touche l\'entrée principale.', 'Rien.', 'Lis l\'encadré « À lire aux joueurs » du dossier, puis joue le Notaire.'],
+    ['Lancer le repérage', 'Chrono de repérage : « 10 min » pour t\'entraîner (15 le jour J).', 'Dans chaque carnet : onglet 3, « Lancer le chrono », puis une piste chacun.', '« Répartissez-vous les pistes. Top ! »'],
+    ['Pendant le repérage', 'Quand un carnet affiche « Pour le MJ » : fais-le sur le plateau (Montrer les gardes, Montrer les caméras…). « Tu t\'es fait remarquer » = alerte +1.', 'Suis 2 ou 3 pistes par carnet. Donne un mot-clé d\'un carnet à l\'autre.', 'Rien : écoute le plan qui se construit.'],
+    ['Le plan, puis l\'entrée (22h00)', 'Heure : +15 et +15 (22:00). Mode Déplacer : pose les deux pions à l\'entrée (puce puis endroit), puis fais-les glisser dans le hall.', 'Carnet 2, onglet Fiche : lance Technique (porte de service) si le joueur entre par la ruelle.', '« Un voiturier ouvre la portière… »'],
+    ['Paul au bar (23h00)', 'Étage 1. Lancer un dé : choisis Joueur 1, Baratin, DD 12 (ou 8 avec les dettes), « Lancer et afficher ». Journal : « 4 derniers chiffres trouvés ».', 'Ou lance le dé depuis la fiche du carnet, et annonce le total.', '« Paul Ferrand transpire, troisième whisky… »'],
+    ['Le bureau d\'Hélène (23h20-23h30)', 'Mode Montrer : touche F7 (« Hélène monte »). Déplace un pion dans F7 : la pièce se découvre. Heure 23:30.', 'Joueur 1 : Discrétion pour la coupe (+3). Joueur 2 : Discrétion pour F7, puis Technique pour le coffre.', '« Les lumières baissent, Hélène pose sa coupe sur le buffet… »'],
+    ['La descente (00h30)', 'Heure 00:30. Étage −1 : pions dans l\'escalier puis le couloir. Révéler : montre la caméra du couloir s\'ils la remarquent.', 'Chacun : Discrétion 12 pour passer la caméra.', '« Talkie des gardes : “Relève.” Vous avez cinq minutes. »'],
+    ['Les lasers', 'Révéler : touche le sas S2 (lasers visibles). Si le courant est coupé : touche encore (lasers coupés) et alerte +1.', 'Joueur 2 : Technique 12 pour couper le courant.', '« Une lumière rouge balaie le sas… »'],
+    ['Un garde surgit', 'Révéler : montre Lucas, fais-le glisser près des pions. Alerte +1. Coups reçus : PV −2. À 0 PV : touche-le encore (neutralisé).', 'Fiche du carnet : Muscle pour frapper, Discrétion pour esquiver.', '« Un faisceau de lampe torche. “Qui est là ?” »'],
+    ['La chambre forte et la fuite', 'Révéler S1. Journal : « Chambre forte ouverte ». Butin +400 000. Pions vers la grille d\'égout, puis « Sortir le pion du plan ».', 'Muscle 14 pour la grille.', '« Huit chiffres, un pouce en silicone, un déclic sourd… »'],
+    ['La fin', 'Annonce plein écran : le titre de l\'équipe. Plateau : « Découvrir l\'étage » et tout montrer, pour voir ce qu\'ils ont raté.', 'Rien.', 'Relis le journal à voix haute, puis joue la rencontre avec le Notaire.'],
+  ];
+  let i = 0;
+  try { i = Math.min(STEPS.length - 1, Math.max(0, parseInt(localStorage.getItem('valmont-train-step'), 10) || 0)); } catch (e) {}
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function showStep() {
+    const [t, d, p, s] = STEPS[i];
+    $('step').innerHTML = `<div class="t"><small>${i + 1}/${STEPS.length}</small>${esc(t)}</div>
+      <div class="lines"><span class="l-do"><b>Console</b>${esc(d)}</span><span class="l-pl"><b>Carnets</b>${esc(p)}</span><span class="l-say"><b>Tu dis</b>${esc(s)}</span></div>`;
+    $('prev').disabled = i === 0; $('next').disabled = i === STEPS.length - 1;
+    try { localStorage.setItem('valmont-train-step', String(i)); } catch (e) {}
+  }
+  $('prev').onclick = () => { i = Math.max(0, i - 1); showStep(); };
+  $('next').onclick = () => { i = Math.min(STEPS.length - 1, i + 1); showStep(); };
+  showStep();
+
+  /* Chaque écran est rendu à la taille de son appareil, puis réduit pour tenir dans sa case. */
+  const panes = [...document.querySelectorAll('.pane')];
+  function fit() {
+    panes.forEach((p) => {
+      const st = p.querySelector('.stage'), fr = st.querySelector('iframe');
+      const W = +fr.dataset.w, H = +fr.dataset.h, bw = st.clientWidth, bh = st.clientHeight;
+      if (!bw || !bh) return;
+      // la console défile : on la cale sur la largeur ; les autres tiennent en entier
+      const k = fr.dataset.scroll ? Math.min(1, bw / W) : Math.min(bw / W, bh / H);
+      const h = fr.dataset.scroll ? bh / k : H;
+      fr.style.width = W + 'px'; fr.style.height = h + 'px';
+      fr.style.transform = `translate(${Math.max(0, (bw - W * k) / 2)}px, ${fr.dataset.scroll ? 0 : Math.max(0, (bh - H * k) / 2)}px) scale(${k})`;
+    });
+  }
+  new ResizeObserver(fit).observe(document.getElementById('grid'));
+  window.addEventListener('resize', fit);
+
+  /* Agrandir un écran / onglets sur petit écran */
+  const grid = $('grid');
+  let current = 'tv';
+  function setOn(p) { current = p; panes.forEach((x) => x.classList.toggle('on', x.dataset.p === p)); $('tabs').innerHTML = [['tv', 'Télé'], ['mj', 'Console'], ['p1', 'Joueur 1'], ['p2', 'Joueur 2']].map(([k, l]) => `<button class="${k === p ? 'on' : ''}" data-tab="${k}">${l}</button>`).join(''); requestAnimationFrame(fit); }
+  document.addEventListener('click', (e) => {
+    const f = e.target.closest('[data-focus]'), t = e.target.closest('[data-tab]');
+    if (f) { const on = grid.classList.contains('focus') && current === f.dataset.focus; grid.classList.toggle('focus', !on); setOn(f.dataset.focus); document.querySelectorAll('[data-focus]').forEach((b) => { b.textContent = grid.classList.contains('focus') && b.dataset.focus === current ? 'Réduire' : 'Agrandir'; }); }
+    if (t) setOn(t.dataset.tab);
+  });
+  setOn('tv');
+
+  /* Remise à zéro : efface la partie d'entraînement et recharge les 4 écrans */
+  let armed = false;
+  $('reset').onclick = () => {
+    if (!armed) { armed = true; $('reset').textContent = 'Toucher encore pour confirmer'; setTimeout(() => { armed = false; $('reset').textContent = 'Tout remettre à zéro'; }, 4000); return; }
+    armed = false; $('reset').textContent = 'Tout remettre à zéro';
+    try { ['valmont-ecran', 'valmont-carnet-1', 'valmont-carnet-2', 'valmont-train-step'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+    i = 0; showStep();
+    document.querySelectorAll('iframe').forEach((fr) => { fr.src = fr.getAttribute('src'); fr.contentWindow && fr.contentWindow.location.reload(); });
+  };
+})();
+</script>
+</body>
+</html>
