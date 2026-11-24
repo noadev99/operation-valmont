@@ -1,0 +1,638 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Carnet du braqueur</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Stencil+One&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+/* Carnet de poche du braqueur, toujours sombre (on joue dans le noir) : une colonne pour téléphone, 4 étapes en onglets. */
+:root {
+  --bg: #0b1018; --panel: #121b28; --panel2: #182436; --line: #2a3b55; --fg: #e9eef6; --muted: #8e9db2;
+  --red: #ff5a47; --amber: #f0bd45; --green: #4fd38c; --blue: #5aa9ff;
+  --display: "Saira Stencil One", Impact, "Arial Narrow", sans-serif;
+  --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.45; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.wrap { max-width: 560px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 80px; display: grid; gap: 14px; }
+header { display: grid; gap: 10px; }
+.title { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.title b { font-family: var(--display); font-weight: 400; font-size: 1.7rem; line-height: 1; }
+.title span { font: 600 .75rem var(--mono); color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.tabs button { background: var(--panel); color: var(--muted); border: 1px solid var(--line); padding: 8px 4px; font: 600 .78rem var(--mono); display: grid; gap: 2px; justify-items: center; }
+.tabs button b { font-size: 1rem; }
+.tabs button.on { background: var(--amber); color: #1a1204; border-color: var(--amber); }
+.tabs button:disabled { opacity: .4; cursor: default; }
+h2 { font-family: var(--display); font-weight: 400; font-size: 1.5rem; margin: 0; letter-spacing: .02em; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.card { background: var(--panel); border: 1px solid var(--line); padding: 14px; display: grid; gap: 10px; }
+.k { font-family: var(--mono); color: var(--amber); font-weight: 600; white-space: nowrap; }
+input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: var(--fg); border: 1px solid var(--line); padding: 12px; width: 100%; border-radius: 0; min-width: 0; }
+.btn { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); padding: 12px 14px; font: 600 .95rem var(--mono); min-height: 46px; }
+.btn.go { background: var(--amber); color: #1a1204; border-color: var(--amber); }
+.btn.full { width: 100%; }
+.btn:disabled { opacity: .45; cursor: default; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row > input { flex: 1 1 160px; }
+
+/* rôles */
+.roles { display: grid; gap: 8px; }
+.role { text-align: left; background: var(--panel); color: var(--fg); border: 1px solid var(--line); padding: 10px; display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; align-items: start; }
+.role > div { display: grid; gap: 6px; min-width: 0; }
+.pic { display: block; width: 100%; aspect-ratio: 1; max-width: 100%; overflow: hidden; border: 1px solid var(--line); }
+.pic svg { display: block; width: 100%; height: 100%; }
+.me { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: center; }
+.me b { font-family: var(--display); font-weight: 400; font-size: 1.5rem; line-height: 1.05; display: block; }
+.me span { color: var(--muted); font: 600 .8rem var(--mono); }
+.role.on { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+.role-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.role-top b { font-size: 1.05rem; }
+.role-top span { font: 600 .78rem var(--mono); }
+.hp { color: var(--red); } .en { color: var(--green); }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; font: 500 .64rem var(--mono); color: var(--muted); }
+.stats span { overflow: hidden; text-overflow: ellipsis; }
+.stats span b { color: var(--amber); font-size: .9rem; display: block; }
+.role small { color: var(--muted); font-size: .86rem; }
+.role small b { color: var(--fg); }
+
+/* matériel */
+.points { display: flex; justify-content: space-between; align-items: center; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 3; background: var(--bg); padding-block: 8px; border-bottom: 1px solid var(--line); }
+.points b { font: 700 1.6rem var(--mono); color: var(--amber); }
+.items { display: grid; gap: 6px; }
+.item { text-align: left; background: var(--panel); color: var(--fg); border: 1px solid var(--line); padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+.item.on { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
+.item b { font-size: .96rem; }
+.item .cost { font: 700 .85rem var(--mono); color: var(--amber); grid-row: span 2; }
+.item.on .cost { color: var(--green); }
+.item small { color: var(--muted); font-size: .84rem; }
+.item:disabled { opacity: .4; }
+.gift { border-left: 3px solid var(--blue); padding: 6px 10px; font-size: .92rem; }
+
+/* repérage */
+.clock { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); padding: 12px 14px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 3; }
+.clock b { font: 700 2.2rem var(--mono); font-variant-numeric: tabular-nums; line-height: 1; }
+.clock span { font: 600 .75rem var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+.clock.late b { color: var(--red); }
+.busy { border: 2px solid var(--amber); background: var(--panel); padding: 14px; display: grid; gap: 10px; }
+.busy .bar { height: 8px; background: var(--panel2); }
+.busy .bar i { display: block; height: 100%; background: var(--amber); }
+.leads { display: grid; gap: 8px; }
+.lead { text-align: left; background: var(--panel); color: var(--fg); border: 1px solid var(--line); padding: 12px 14px; display: grid; gap: 4px; }
+.lead .lt { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.lead .lt b { font-size: 1rem; }
+.lead .lt em { font-style: normal; font: 600 .78rem var(--mono); color: var(--muted); white-space: nowrap; }
+.lead small { color: var(--muted); font-size: .86rem; }
+.lead .meta { font: 600 .76rem var(--mono); color: var(--amber); }
+.lead.new { border-color: var(--blue); }
+.lead.new .lt b::after { content: " · nouveau"; color: var(--blue); font: 600 .72rem var(--mono); }
+.lead:disabled { opacity: .45; cursor: default; }
+.lead.done { opacity: .55; }
+.boost { display: flex; gap: 10px; align-items: center; font-size: .92rem; }
+.boost input { width: 22px; height: 22px; accent-color: var(--amber); }
+.clue { border-left: 3px solid var(--green); background: var(--panel); padding: 10px 12px; display: grid; gap: 4px; }
+.clue.ko { border-left-color: var(--muted); }
+.clue b { font-size: .95rem; }
+.clue p { font-size: .93rem; }
+.clue .roll { font: 600 .74rem var(--mono); color: var(--muted); }
+.clue .code { font: 700 .9rem var(--mono); color: var(--blue); }
+.clue .mj { font: 600 .82rem var(--mono); color: var(--amber); }
+.clue .gift { border-left-color: var(--blue); font-size: .88rem; }
+.reveal { border: 2px solid var(--green); }
+.reveal.ko { border-color: var(--red); }
+.bigroll { font: 700 3rem var(--mono); line-height: 1; color: var(--amber); }
+
+/* fiche */
+.pool { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stp { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; border: 1px solid var(--line); background: var(--panel); }
+.stp button { background: var(--panel2); color: var(--fg); border: 0; min-height: 52px; font: 700 1.3rem var(--mono); }
+.stp div { text-align: center; display: grid; }
+.stp div small { font: 600 .7rem var(--mono); color: var(--muted); letter-spacing: .1em; }
+.stp div b { font: 700 1.3rem var(--mono); font-variant-numeric: tabular-nums; }
+.skills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.skill { background: var(--panel); border: 1px solid var(--line); color: var(--fg); padding: 12px; display: grid; gap: 2px; text-align: left; }
+.skill b { font: 700 1.3rem var(--mono); color: var(--amber); }
+.skill span { font-size: .9rem; }
+.skill small { font: 500 .72rem var(--mono); color: var(--muted); }
+.gearlist { display: grid; gap: 6px; }
+.gearlist label { display: flex; gap: 10px; align-items: flex-start; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; font-size: .92rem; }
+.gearlist input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--green); flex: none; }
+.gearlist label.used { opacity: .5; text-decoration: line-through; }
+.gearlist small { display: block; color: var(--muted); font-size: .82rem; text-decoration: none; }
+.alertline { font: 600 .9rem var(--mono); color: var(--red); }
+.danger { background: none; border: 1px solid var(--line); color: var(--muted); padding: 10px; font: 500 .82rem var(--mono); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="title"><b>Carnet du braqueur</b><span id="who"></span></div>
+    <nav class="tabs" id="tabs" aria-label="Étapes"></nav>
+  </header>
+  <main id="view"></main>
+</div>
+
+<script>
+/* Portraits des 6 rôles — visages à facettes, éclairage dur, liseré de couleur.
+   API : ValmontPortraits.svg(nomDuRôle) → chaîne SVG (viewBox 200×200). */
+(function () {
+  let uid = 0;
+  const SK = { // clair, moyen, ombre, ombre profonde
+    pale: ['#f0c6a2', '#d49c78', '#a66b4d', '#6c4333'],
+    tan: ['#dba57a', '#b57c55', '#7f5238', '#4f3123'],
+    olive: ['#d8ac82', '#b88a61', '#82603f', '#533a27'],
+    dark: ['#a8714c', '#86553a', '#5c3826', '#3a231a'],
+    deep: ['#8c5c3e', '#6c442e', '#4a2d1f', '#2e1c14'],
+  };
+  const pts = (a) => a.map((p) => p.join(',')).join(' ');
+  const P = (a, fill, extra = '') => `<polygon points="${pts(a)}" fill="${fill}" ${extra}/>`;
+  const L = (d, stroke, w = 1.5, extra = '') => `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
+  const mirror = (a) => a.map(([x, y]) => [200 - x, y]);
+
+  /* ---------- tête de base ---------- */
+  function ears(s) {
+    const r = [[131, 86], [139, 83], [141, 96], [135, 107], [129, 104]];
+    return P(mirror(r), s[2]) + P([[63, 88], [61, 96], [66, 103]], s[3]) + P(r, s[1]) + P([[137, 88], [139, 96], [134, 103]], s[2]);
+  }
+  function neck(s, wide = 1) {
+    const a = 14 * wide, b = 18 * wide;
+    return P([[100 - a, 126], [100 + a, 126], [100 + b, 168], [100 - b, 168]], s[2]) + P([[100 - a, 126], [100 + a, 126], [100 + a - 4, 142], [100 - a + 4, 142]], s[3]);
+  }
+  function face(s) {
+    const F = [
+      [[[100, 36], [124, 44], [132, 62], [100, 58]], 0], [[[100, 36], [76, 44], [68, 62], [100, 58]], 1],
+      [[[100, 58], [132, 62], [128, 78], [100, 76]], 0], [[[100, 58], [68, 62], [72, 78], [100, 76]], 1],
+      [[[100, 76], [128, 78], [126, 85], [104, 83]], 1], [[[100, 76], [72, 78], [74, 85], [96, 83]], 2],
+      [[[104, 83], [126, 85], [132, 95], [118, 99], [106, 95]], 1], [[[96, 83], [74, 85], [68, 95], [82, 99], [94, 95]], 2],
+      [[[118, 99], [132, 95], [128, 116], [112, 112]], 0], [[[82, 99], [68, 95], [72, 116], [88, 112]], 2],
+      [[[106, 95], [118, 99], [112, 112], [106, 101]], 1], [[[94, 95], [82, 99], [88, 112], [94, 101]], 2],
+      [[[100, 106], [106, 101], [112, 112], [108, 118], [100, 116]], 1], [[[100, 106], [94, 101], [88, 112], [92, 118], [100, 116]], 2],
+      [[[112, 112], [128, 116], [119, 133], [108, 142], [100, 145], [100, 125], [108, 118]], 1],
+      [[[88, 112], [72, 116], [81, 133], [92, 142], [100, 145], [100, 125], [92, 118]], 2],
+      [[[94, 126], [106, 126], [108, 141], [100, 145], [92, 141]], 1],
+      [[[100, 82], [104, 83], [106, 101], [100, 107]], 0], [[[100, 82], [96, 83], [94, 101], [100, 107]], 1],
+      [[[94, 101], [100, 107], [106, 101], [104, 108], [96, 108]], 2],
+    ];
+    return F.map(([a, i]) => P(a, s[i])).join('') + P([[96, 105], [99, 106], [98, 108]], s[3]) + P([[104, 105], [101, 106], [102, 108]], s[3]);
+  }
+  function eyes(o = {}) {
+    const iris = o.iris || '#3a4a5a', lid = o.squint ? 1.4 : 0;
+    const one = (cx, flip) => {
+      const k = flip ? -1 : 1, X = (dx) => cx + dx * k;
+      return P([[X(-8), 90], [X(-2), 87 + lid], [X(6), 88 + lid], [X(8), 91], [X(1), 93], [X(-5), 92.5]], '#efe7de')
+        + `<circle cx="${X(0.5)}" cy="${90.4 + lid / 2}" r="${o.squint ? 2.2 : 2.7}" fill="${iris}"/><circle cx="${X(0.5)}" cy="${90.4 + lid / 2}" r="1.1" fill="#0b0b0d"/><circle cx="${X(1.6)}" cy="${89.4 + lid / 2}" r=".7" fill="#fff"/>`
+        + P([[X(-8.5), 90], [X(-2), 86.5 + lid], [X(6.5), 87.5 + lid], [X(8.5), 91], [X(6), 89 + lid], [X(-2), 88.5 + lid]], o.liner || 'rgba(20,12,10,.85)');
+    };
+    return one(114, false) + one(86, true);
+  }
+  function brows(color, o = {}) {
+    const t = o.thick || 0, r = [[104, 84], [117, 80 - t], [127, 82], [126, 85], [117, 83], [105, 87]];
+    return P(r, color) + P(mirror(r), color);
+  }
+  function mouth(s, o = {}) {
+    const up = o.smirk ? 3 : 0, lip = o.lip || s[1];
+    return P([[89, 120], [95, 118], [100, 119], [105, 118], [111, 120 - up], [100, 121.5]], s[3]) + P([[91, 121], [110, 121 - up], [105, 125], [95, 125]], lip) + P([[95, 125], [105, 125], [103, 127], [97, 127]], s[2]);
+  }
+  function rim(color) {
+    const outer = [[76, 44], [68, 62], [68, 94], [72, 116], [81, 133], [92, 142]];
+    const inner = [[92, 142], [84, 132], [76, 115], [72.5, 94], [72.5, 63], [79, 46]];
+    return P(outer.concat(inner), color, 'opacity=".65"');
+  }
+  function bg(p, accent) {
+    return `<defs><radialGradient id="${p}g" cx="25%" cy="20%" r="85%"><stop offset="0" stop-color="${accent}" stop-opacity=".55"/><stop offset=".55" stop-color="#121a26"/><stop offset="1" stop-color="#070a10"/></radialGradient>
+      <linearGradient id="${p}v" x1="0" y1="0" x2="0" y2="1"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".55"/></linearGradient></defs>
+      <rect width="200" height="200" fill="url(#${p}g)"/>`
+      + P([[0, 0], [70, 0], [0, 90]], accent, 'opacity=".12"') + P([[150, 0], [200, 0], [200, 40]], accent, 'opacity=".08"')
+      + P([[0, 150], [40, 120], [20, 200], [0, 200]], '#fff', 'opacity=".03"');
+  }
+  const wrap = (w, inner) => w === 1 ? inner : `<g transform="translate(100 0) scale(${w} 1) translate(-100 0)">${inner}</g>`;
+  function shoulders(main, light, dark, wide = 0) {
+    const a = [[14 - wide, 200], [26 - wide, 162], [66 - wide / 2, 146], [100, 156], [134 + wide / 2, 146], [174 + wide, 162], [186 + wide, 200]];
+    return P(a, main) + P([[100, 156], [134 + wide / 2, 146], [174 + wide, 162], [186 + wide, 200], [130, 200]], light) + P([[14 - wide, 200], [26 - wide, 162], [66 - wide / 2, 146], [74, 200]], dark);
+  }
+
+  /* ---------- les 6 personnages ---------- */
+  const CHARS = {
+    "Le Cerveau": { accent: '#f0bd45', draw(s) {
+      let back = shoulders('#8a6b45', '#a2825a', '#6b5135') // trench
+        + P([[66, 146], [100, 156], [84, 200], [70, 200]], '#5e472f') + P([[134, 146], [100, 156], [116, 200], [130, 200]], '#7d6140');
+      back += neck(s);
+      back += P([[83, 130], [117, 130], [121, 168], [100, 176], [79, 168]], '#1c1f25') + [138, 146, 154, 162].map((y) => L(`M${83 + (y - 130) * 0.1} ${y}H${117 - (y - 130) * 0.1 + 4}`, '#2b2f37', 1.2)).join('');
+      let head = ears(s) + face(s) + eyes({ iris: '#6b7f8f' }) + brows('#8d9196', { thick: 1 })
+        + P([[108, 40], [122, 46], [119, 52], [107, 47]], '#fff', 'opacity=".28"') // crâne qui brille
+        + P([[69, 72], [74, 64], [78, 84], [71, 90]], '#9ca1a7') + P(mirror([[69, 72], [74, 64], [78, 84], [71, 90]]), '#b4b8bd')
+        // barbe grise taillée
+        + P([[100, 116], [112, 112], [127, 108], [125, 122], [115, 138], [100, 149]], '#b9bdc2') + P([[100, 116], [88, 112], [73, 108], [75, 122], [85, 138], [100, 149]], '#8b9097')
+        + P([[100, 132], [112, 128], [108, 142], [100, 149], [92, 142], [88, 128]], '#a5a9ae')
+        + P([[87, 115], [100, 110], [113, 115], [109, 119], [100, 116], [91, 119]], '#d3d6d9')
+        + P([[94, 121], [106, 121], [104, 124], [96, 124]], s[1])
+        // lunettes rondes teintées
+        + `<circle cx="86" cy="90" r="10" fill="rgba(240,189,69,.22)" stroke="#c9a24a" stroke-width="1.8"/><circle cx="114" cy="90" r="10" fill="rgba(240,189,69,.22)" stroke="#c9a24a" stroke-width="1.8"/>`
+        + L('M96 89Q100 86 104 89M124 89L136 86M76 89L64 86', '#c9a24a', 1.6)
+        + P([[80, 84], [86, 82], [84, 86]], '#fff', 'opacity=".5"') + P([[108, 84], [114, 82], [112, 86]], '#fff', 'opacity=".5"')
+        // oreillette
+        + P([[136, 92], [141, 91], [141, 99], [136, 100]], '#16181c') + L('M139 100c3 4-3 6 0 10s-3 6 0 10-3 6 0 10 -2 8-2 14', '#16181c', 1.4);
+      return { back, head };
+    } },
+
+    "Le Hacker": { accent: '#35d6e8', w: 0.93, draw(s) {
+      let back = P([[56, 96], [62, 50], [100, 28], [138, 50], [144, 96], [152, 152], [48, 152]], '#20242c') // capuche
+        + P([[100, 28], [138, 50], [144, 96], [152, 152], [120, 152]], '#272c35');
+      back += shoulders('#2c313b', '#353b47', '#22262e') + neck(s, 0.9)
+        + P([[76, 138], [100, 160], [124, 138], [118, 132], [100, 148], [82, 132]], '#1d2128')
+        + L('M92 152V178M108 152V174', '#d8dde6', 1.6) + `<circle cx="92" cy="179" r="1.8" fill="#9aa3b0"/><circle cx="108" cy="175" r="1.8" fill="#9aa3b0"/>`;
+      let head = ears(s) + face(s) + eyes({ iris: '#3a2a1f', liner: 'rgba(10,8,12,.95)' }) + brows('#1b1820')
+        + mouth(s, { lip: '#9a5f4c' })
+        // côté rasé
+        + P([[68, 62], [76, 60], [76, 82], [68, 84]], s[2], 'opacity=".9"') + Array.from({ length: 14 }, (_, i) => `<circle cx="${69 + (i % 3) * 2.6}" cy="${64 + Math.floor(i / 3) * 4}" r=".5" fill="#1b1820"/>`).join('')
+        // cheveux : mèche longue rabattue d'un côté
+        + P([[74, 62], [78, 40], [100, 31], [126, 37], [141, 56], [142, 92], [134, 98], [132, 72], [120, 58], [100, 56], [84, 64]], '#1a1820')
+        + P([[100, 31], [126, 37], [141, 56], [128, 52], [108, 42]], '#2b2733')
+        + P([[96, 33], [110, 32], [126, 46], [114, 49]], '#35d6e8') // mèche néon
+        + P([[126, 46], [141, 56], [142, 74], [134, 66]], '#2a9fb0', 'opacity=".7"')
+        // code-barres tatoué sur la joue
+        + [0, 2, 3, 5, 7, 8, 10].map((x) => `<rect x="${77 + x}" y="101" width="${x % 3 ? 0.8 : 1.4}" height="8" fill="#1c1a22" opacity=".8"/>`).join('')
+        // monocle de visée hexagonal
+        + `<polygon points="114,78 124,84 124,96 114,102 104,96 104,84" fill="rgba(53,214,232,.28)" stroke="#35d6e8" stroke-width="2"/>`
+        + L('M124 90H134', '#35d6e8', 1.6) + L('M108 86l4 4M118 94l2-2', '#bff6fb', 1, 'opacity=".9"')
+        + `<circle cx="104.5" cy="104.5" r="2.2" fill="none" stroke="#cfd6de" stroke-width="1"/>` // anneau de nez
+        + `<circle cx="80" cy="81" r="1" fill="#cfd6de"/><circle cx="84" cy="79.5" r="1" fill="#cfd6de"/>`;
+      return { back, head };
+    } },
+
+    "Le Perceur": { accent: '#ff8a3d', draw(s) {
+      let back = shoulders('#7a3f1d', '#8f4c25', '#5f3016') + neck(s)
+        + P([[26, 176], [174, 176], [178, 186], [22, 186]], '#c8ccd0') + P([[26, 176], [174, 176], [175, 179], [25, 179]], '#fff', 'opacity=".5"')
+        + P([[70, 146], [100, 160], [130, 146], [124, 138], [100, 150], [76, 138]], '#5a5f66') // col en polaire
+        + P([[90, 160], [110, 160], [100, 172]], '#3d4249');
+      let head = ears(s) + face(s) + eyes({ iris: '#4a6a3a', squint: true }) + brows('#3b2a20', { thick: 1.5 })
+        + mouth(s)
+        + P([[76, 108], [128, 108], [122, 132], [108, 142], [100, 145], [92, 142], [78, 132]], '#2a1a10', 'opacity=".28"') // barbe de 3 jours
+        // moustache en guidon
+        + P([[84, 116], [92, 111], [100, 113], [108, 111], [116, 116], [122, 110], [121, 118], [110, 119], [100, 116.5], [90, 119], [79, 118], [78, 110]], '#3b2a20')
+        // suie et cicatrice
+        + P([[118, 100], [128, 98], [126, 108], [116, 106]], '#1a1410', 'opacity=".35"') + P([[80, 66], [92, 64], [88, 72]], '#1a1410', 'opacity=".3"')
+        + L('M120 102l8 10', '#d58a7a', 1.4)
+        // cheveux en bataille
+        + P([[70, 62], [72, 44], [82, 42], [86, 30], [96, 40], [104, 27], [112, 40], [123, 31], [124, 45], [134, 48], [131, 64], [100, 54]], '#3b2a20')
+        + P([[104, 27], [112, 40], [123, 31], [124, 45], [134, 48], [118, 48], [106, 42]], '#4e392b')
+        // lunettes de soudeur relevées
+        + P([[67, 56], [133, 56], [134, 65], [66, 65]], '#26282b')
+        + `<circle cx="87" cy="58" r="10.5" fill="#15191d" stroke="#b8893a" stroke-width="3"/><circle cx="113" cy="58" r="10.5" fill="#15191d" stroke="#b8893a" stroke-width="3"/>`
+        + P([[108, 52], [116, 51], [111, 56]], '#ff8a3d', 'opacity=".8"') + P([[82, 52], [90, 51], [85, 56]], '#ff8a3d', 'opacity=".6"');
+      return { back, head };
+    } },
+
+    "Le Gros Bras": { accent: '#ff4d3d', w: 1.12, draw(s) {
+      let back = shoulders('#454d34', '#525b3e', '#383f2a', 10) + neck(s, 1.35)
+        + P([[60, 168], [140, 168], [146, 200], [54, 200]], '#3a4130') + [70, 92, 114].map((x) => P([[x, 176], [x + 18, 176], [x + 18, 196], [x, 196]], '#2f3527') + P([[x, 176], [x + 18, 176], [x + 18, 180], [x, 180]], '#525b3e')).join('')
+        + P([[52, 150], [66, 146], [72, 172], [58, 172]], '#2f3527') + P([[148, 150], [134, 146], [128, 172], [142, 172]], '#2f3527')
+        + P([[80, 128], [120, 128], [124, 160], [76, 160]], '#15171b'); // cagoule au cou
+      let head = ears(s) + face(s)
+        // cagoule
+        + P([[100, 34], [126, 42], [135, 62], [138, 92], [130, 120], [119, 136], [100, 147], [81, 136], [70, 120], [62, 92], [65, 62], [74, 42]], '#17191d')
+        + P([[100, 34], [126, 42], [135, 62], [138, 92], [130, 120], [119, 136], [100, 147], [100, 60]], '#1f2227')
+        + P([[100, 34], [126, 42], [120, 52], [100, 48]], '#2a2e35') + P([[126, 42], [135, 62], [128, 64]], '#2a2e35')
+        + L('M70 70Q100 62 130 70M66 104Q100 98 134 104', '#2a2e35', 1, 'opacity=".7"')
+        // fente des yeux
+        + P([[73, 80], [127, 80], [129, 99], [71, 99]], s[1]) + P([[73, 80], [127, 80], [126, 84], [74, 84]], s[2])
+        + eyes({ iris: '#2a1c14', squint: true }) + brows('#120c09', { thick: 2.5 })
+        + L('M117 77l5 18', '#c47766', 1.8) // cicatrice
+        // nez cassé sous le tissu
+        + P([[97, 99], [104, 99], [109, 110], [101, 113], [94, 109]], '#2a2e35')
+        // trou de la bouche et dent en or
+        + P([[88, 115], [112, 115], [113, 124], [100, 130], [87, 124]], s[2])
+        + P([[90, 119], [110, 119], [100, 121.5]], s[3]) + P([[91, 121], [109, 121], [105, 126], [95, 126]], '#6b3d2c')
+        + `<rect x="102" y="119" width="3.2" height="3.4" fill="#f0bd45"/><rect x="96" y="119" width="3" height="3" fill="#e9e2d4"/>`;
+      return { back, head };
+    } },
+
+    "Le Beau Parleur": { accent: '#c56cff', draw(s) {
+      let back = shoulders('#111116', '#1b1b22', '#0a0a0e') + neck(s)
+        + P([[86, 148], [114, 148], [100, 196]], '#ece8e1') + P([[100, 150], [114, 148], [100, 196]], '#d6d1c8')
+        + P([[66, 146], [92, 150], [100, 196], [80, 200]], '#1e1e27') + P([[134, 146], [108, 150], [100, 196], [120, 200]], '#2a2a36') // revers satinés
+        + P([[94, 152], [100, 156], [92, 176], [88, 172]], '#4b2366') + P([[106, 152], [100, 156], [110, 170], [114, 166]], '#5e2d80'); // nœud défait
+      let head = ears(s) + face(s)
+        + P([[70, 70], [71, 46], [86, 34], [106, 31], [124, 37], [134, 52], [132, 74], [125, 58], [110, 48], [90, 48], [76, 58]], '#111116')
+        + L('M84 44Q102 36 122 44M80 52Q100 44 126 52', '#4b5d82', 1.2, 'opacity=".8"')
+        // loup (demi-masque) avec liseré doré
+        + P([[69, 82], [84, 77], [96, 83], [100, 88], [104, 83], [116, 77], [131, 82], [129, 97], [116, 101], [104, 97], [100, 95], [96, 97], [84, 101], [71, 97]], '#1c1024', 'stroke="#d6a84a" stroke-width="1.4"')
+        + P([[104, 83], [116, 77], [131, 82], [118, 84]], '#3a2050')
+        + eyes({ iris: '#2b1d14' }) + brows('#0e0b0a')
+        + mouth(s, { smirk: true, lip: '#6a3d2c' })
+        + P([[89, 113], [100, 111], [111, 113], [111, 114.6], [100, 112.8], [89, 114.6]], '#0e0b0a') // fine moustache
+        + `<circle cx="64" cy="105" r="2.3" fill="none" stroke="#d6a84a" stroke-width="1.4"/>`; // boucle d'oreille
+      return { back, head };
+    } },
+
+    "L'Acrobate": { accent: '#4fd38c', w: 0.93, draw(s) {
+      const braid = (x, k) => Array.from({ length: 6 }, (_, i) => P([[x + k * (i % 2 ? 2 : -2) - 5, 92 + i * 11], [x + k * (i % 2 ? 2 : -2) + 5, 92 + i * 11], [x + 3, 103 + i * 11], [x - 3, 103 + i * 11]], i % 2 ? '#a4471f' : '#c25a2a')).join('');
+      let back = shoulders('#25362a', '#2e4434', '#1c2a20') + braid(60, 1) + braid(140, -1) + neck(s, 0.9)
+        + L('M62 160L84 200M138 160L116 200', '#e0b43a', 5) + `<rect x="94" y="178" width="12" height="10" fill="#b9bec4"/>` // baudrier
+        + P([[76, 130], [124, 130], [132, 156], [100, 168], [68, 156]], '#c9b68a') + L('M74 142L126 142M72 150L128 150', '#9b8a62', 1.4) + L('M86 132L80 158M100 134V166M114 132L120 158', '#9b8a62', 1);
+      let head = ears(s) + face(s) + eyes({ iris: '#3e6b3a' }) + brows('#9a4a24')
+        + mouth(s, { lip: '#b4705c' })
+        + [[96, 99], [104, 99], [92, 103], [108, 103], [100, 97], [86, 104], [114, 104]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r=".9" fill="#b8714f"/>`).join('') // taches de rousseur
+        + P([[76, 98], [92, 96], [92, 100.5], [77, 102]], '#1d2b1f', 'opacity=".85"') + P(mirror([[76, 98], [92, 96], [92, 100.5], [77, 102]]), '#1d2b1f', 'opacity=".85"')
+        // casque d'escalade
+        + P([[63, 74], [65, 48], [82, 32], [100, 27], [118, 32], [135, 48], [137, 74], [128, 70], [100, 64], [72, 70]], '#3f5a3a')
+        + P([[100, 27], [118, 32], [135, 48], [137, 74], [128, 70], [118, 50], [100, 44]], '#567a4f')
+        + P([[63, 74], [72, 70], [100, 64], [128, 70], [137, 74], [128, 76], [100, 70], [72, 76]], '#2b3d28')
+        + [[84, 44], [116, 44]].map(([x, y]) => P([[x - 4, y], [x + 4, y], [x + 3, y + 6], [x - 3, y + 6]], '#1b2419')).join('')
+        + L('M70 76L76 118L92 140M130 76L124 118L108 140', '#151a14', 1.8)
+        // jumelles de vision nocturne relevées
+        + P([[93, 38], [107, 38], [107, 48], [93, 48]], '#1c1f22')
+        + `<circle cx="91" cy="28" r="7" fill="#1c1f22"/><circle cx="109" cy="28" r="7" fill="#1c1f22"/><circle cx="91" cy="28" r="3.6" fill="#4fd38c" opacity=".85"/><circle cx="109" cy="28" r="3.6" fill="#4fd38c" opacity=".85"/>`
+        + `<circle cx="92.5" cy="26.5" r="1.1" fill="#d9ffe9"/><circle cx="110.5" cy="26.5" r="1.1" fill="#d9ffe9"/>`;
+      return { back, head };
+    } },
+  };
+  const SKIN = { "Le Cerveau": 'pale', "Le Hacker": 'olive', "Le Perceur": 'tan', "Le Gros Bras": 'dark', "Le Beau Parleur": 'deep', "L'Acrobate": 'pale' };
+
+  function svg(role, label) {
+    const c = CHARS[role];
+    if (!c) return '';
+    const p = `vpo${++uid}_`, s = SK[SKIN[role]];
+    const { back, head } = c.draw(s);
+    return `<svg class="vportrait" viewBox="0 0 200 200" role="img" aria-label="${label || 'Portrait : ' + role}">${bg(p, c.accent)}${back}${wrap(c.w || 1, head + rim(c.accent))}<rect width="200" height="200" fill="url(#${p}v)"/></svg>`;
+  }
+  window.ValmontPortraits = { svg, roles: Object.keys(CHARS), accent: (r) => (CHARS[r] || {}).accent };
+})();
+
+</script>
+<script>
+(function () {
+  /* Les pistes sont encodées pour que personne ne lise les réponses par accident. */
+  const PISTES_B64 = "W3siaWQiOiJwcmVzc2UiLCJ0IjoiTGEgcHJlc3NlIGxvY2FsZSIsInAiOiJMZXMgYXJ0aWNsZXMgc3VyIGxlcyAxNTAgYW5zIGRlIGxhIGJhbnF1ZS4iLCJza2lsbCI6IkJhcmF0aW4iLCJkZCI6OCwic2VjIjo5MCwib2siOiJMYSBjaGFtYnJlIGZvcnRlIGEgdW5lIHNlcnJ1cmUgw6AgdGVtcG9yaXNhdGlvbiA6IGVsbGUgcydvdXZyZSBzZXVsZSDDoCA2aDAwIHBvdXIgbGUgZm91cmdvbiBibGluZMOpLiBMZSByZXN0ZSBkdSB0ZW1wcywgaWwgZmF1dCB1biBjb2RlIMOgIDggY2hpZmZyZXMgZXQgbCdlbXByZWludGUgZGUgbGEgZGlyZWN0cmljZS4iLCJrbyI6IlF1ZSBkZXMgcGhvdG9zIGRlIHBldGl0cyBmb3Vycy4gVW5lIHNldWxlIGluZm8gdXRpbGUgOiBsZSBmb3VyZ29uIGJsaW5kw6kgYXJyaXZlIMOgIDZoMDAuIn0seyJpZCI6ImJhciIsInQiOiJMZSBDYWbDqSBkZSBsYSBCb3Vyc2UiLCJwIjoiTGUgYmFyIGVuIGZhY2UgZGUgbGEgYmFucXVlLCBvw7kgbGUgcGVyc29ubmVsIHZpZW50IGJvaXJlIHVuIHZlcnJlLiIsInNraWxsIjoiQmFyYXRpbiIsImRkIjoxMCwic2VjIjoxMjAsIm9rIjoiTGUgYmFybWFuIHRlIHBhcmxlIGRlIE1hcmNvLCBsJ2FnZW50IGQnZW50cmV0aWVuIGRlIGxhIGJhbnF1ZS4gSWwgdmllbnQgaWNpIGFwcsOocyBzb24gc2VydmljZSBldCBpbCBkw6l0ZXN0ZSBsZXMgVmFsbW9udCBkZXB1aXMgcXUnaWxzIG9udCBsaWNlbmNpw6kgc2Egc8WTdXIuIiwidW5sb2NrIjpbIm1hcmNvIl0sImtvIjoiTGUgYmFybWFuIHNlIG3DqWZpZSBldCBuZSBkaXQgcmllbi4gVHUgcmVtYXJxdWVzIGp1c3RlIGRlcyBiYWRnZXMgwqsgVmFsbW9udCAmIEZpbHMgwrsgc3VyIGxlIGNvbXB0b2lyLiJ9LHsiaWQiOiJmYWNhZGUiLCJ0IjoiU3VydmVpbGxlciBsYSBmYcOnYWRlIiwicCI6IkRlcHVpcyBsYSBjYW1pb25uZXR0ZSwganVtZWxsZXMgZW4gbWFpbi4iLCJza2lsbCI6IkRpc2Nyw6l0aW9uIiwiZGQiOjEwLCJzZWMiOjE4MCwib2siOiJUdSBjb21wdGVzIGxlcyBnYXJkZXMgOiB1bmUgZ2FyZGUgZmFpdCBsZSB0b3VyIGR1IGhhbGwsIHVuIGdhcmRlIGZ1bWUgc3VyIGxlIHRvaXQgcHLDqHMgZHUgY2FiYW5vbiB0b3V0ZXMgbGVzIDMwIG1pbnV0ZXMsIGV0IHVuIGF1dHJlIHNvbW5vbGUgYXUgcGFya2luZyBkdSBzb3VzLXNvbC4iLCJtaiI6IlLDqXbDqGxlIGxlcyBnYXJkZXMgZXQgbGV1cnMgcm9uZGVzIHN1ciBsJ8OpY3Jhbi4iLCJrbyI6IkRlcyBzaWxob3VldHRlcyBwYXNzZW50IGRlcnJpw6hyZSBsZXMgdml0cmVzLiBJbXBvc3NpYmxlIGRlIHNhdm9pciBjb21iaWVuLiJ9LHsiaWQiOiJjYW1zIiwidCI6IlBpcmF0ZXIgbGVzIGNhbcOpcmFzIGRlIGxhIHJ1ZSIsInAiOiJMZSByw6lzZWF1IGRlIHZpZMOpb3N1cnZlaWxsYW5jZSBkZSBsYSBwbGFjZSBlc3QgbWFsIHByb3TDqWfDqS4iLCJza2lsbCI6IlRlY2huaXF1ZSIsImRkIjoxMiwic2VjIjoxODAsIm9rIjoiVHUgcsOpY3Vww6hyZXMgbGUgc2Now6ltYSBkZSB0b3V0ZXMgbGVzIGNhbcOpcmFzIGRlIGxhIGJhbnF1ZS4gRWxsZXMgc29udCByZWxpw6llcyBhdSBQQyBzw6ljdXJpdMOpIGR1IHJlei1kZS1jaGF1c3PDqWUuIERhbnMgbGUgbcOqbWUgc2VydmV1ciwgdW4gZG9zc2llciDCqyBSSCBzw6ljdXJpdMOpIMK7IGF0dGlyZSB0b24gxZNpbC4iLCJtaiI6IlLDqXbDqGxlIGxlcyBjYW3DqXJhcyBzdXIgbCfDqWNyYW4uIiwidW5sb2NrIjpbInBsYW5uaW5nIl0sImtvIjoiTGUgcGFyZS1mZXUgdGUgYmxvcXVlLiBUdSBhcyBqdXN0ZSBsZSB0ZW1wcyBkZSB2b2lyIHF1J2lsIHkgYSBkZXMgY2Ftw6lyYXMgZGFucyBjaGFxdWUgY291bG9pci4ifSx7ImlkIjoicG91YmVsbGVzIiwidCI6IkZvdWlsbGVyIGxlcyBwb3ViZWxsZXMiLCJwIjoiTGVzIGJlbm5lcyBkZSBsYSBydWVsbGUsIGRlcnJpw6hyZSBsYSBiYW5xdWUuIiwic2tpbGwiOiJEaXNjcsOpdGlvbiIsImRkIjoxMiwic2VjIjoxMjAsIm9rIjoiVW4gYm9uIGRlIGxpdnJhaXNvbiBkdSB0cmFpdGV1ciBNYWlzb24gRHV2YWwgKGxpdnJhaXNvbiDDoCAyMWggcGFyIGxhIHBvcnRlIGRlIHNlcnZpY2UpIGV0IHVuZSBsaXN0ZSBkJ2ludml0w6lzIGR1IGdhbGEsIGZyb2lzc8OpZS4iLCJ1bmxvY2siOlsiZHV2YWwiLCJpbnZpdCJdLCJrbyI6IkRlcyDDqXBsdWNodXJlcywgZHUgY2FydG9uIGV0IHVuIGNoYXQgdHLDqHMgZW4gY29sw6hyZS4ifSx7ImlkIjoiY2FkYXN0cmUiLCJ0IjoiTGUgY2FkYXN0cmUgZGUgbGEgbWFpcmllIiwicCI6IkxlcyB2aWV1eCBwbGFucyBkdSBiw6J0aW1lbnQsIGF1eCBhcmNoaXZlcyBtdW5pY2lwYWxlcy4iLCJza2lsbCI6IlRlY2huaXF1ZSIsImRkIjoxMiwic2VjIjoxODAsIm9rIjoiU3VyIGxlcyBwbGFucyBkZSAxOTYyIDogdW5lIGdhaW5lIGRlIHZlbnRpbGF0aW9uIGRlc2NlbmQgZHUgdG9pdCBqdXNxdSfDoCBsYSBjaGF1ZmZlcmllIGR1IHNvdXMtc29sLCBldCB1bmUgZ3JpbGxlIGRlIGxhIGNoYXVmZmVyaWUgZG9ubmUgc3VyIGxlcyDDqWdvdXRzLiIsImtvIjoiTCdhcmNoaXZpc3RlIGZlcm1lIGRhbnMgZGl4IG1pbnV0ZXMuIFR1IHJlcGFycyBicmVkb3VpbGxlLiJ9LHsiaWQiOiJoZWxlbmUiLCJ0IjoiTGVzIHLDqXNlYXV4IHNvY2lhdXggZCdIw6lsw6huZSIsInAiOiJMYSBkaXJlY3RyaWNlIHBvc3RlIGJlYXVjb3VwIGRlIHBob3Rvcy4iLCJza2lsbCI6IlRlY2huaXF1ZSIsImRkIjoxMCwic2VjIjoxMjAsIm9rIjoiVW5lIHBob3RvIGRlIHNvbiBidXJlYXUgOiBkZXJyacOocmUgZWxsZSwgdW4gZ3JhbmQgdGFibGVhdSB1biBwZXUgZGUgdHJhdmVycy4gU29uIGRlcm5pZXIgbWVzc2FnZSA6IMKrIERpc2NvdXJzIMOgIDIzaDMwICEgSmUgbW9udGVyYWkgbWUgcHLDqXBhcmVyIGRhbnMgbW9uIGJ1cmVhdSB2ZXJzIDIzaDIwLiDCuyIsImtvIjoiU29uIGNvbXB0ZSBlc3QgcHJpdsOpLiBUdSB2b2lzIHNldWxlbWVudCBzYSBwaG90byBkZSBwcm9maWwsIHVuZSBjb3VwZSBkZSBjaGFtcGFnbmUgw6AgbGEgbWFpbi4ifSx7ImlkIjoicnVtZXVycyIsInQiOiJMZXMgcnVtZXVycyBkdSBxdWFydGllciIsInAiOiJMZSBraW9zcXVlIMOgIGpvdXJuYXV4LCBsYSBib3VsYW5nZXJpZSwgbGUgY29yZG9ubmllci4iLCJza2lsbCI6IkJhcmF0aW4iLCJkZCI6MTIsInNlYyI6MTIwLCJvayI6IkxlIGtpb3NxdWllciBhIHZ1IFBhdWwgRmVycmFuZCwgbGUgZGlyZWN0ZXVyIGQnYWdlbmNlLCBzb3J0aXIgZHUgQ2VyY2xlIFNhaW50LVJvY2ggw6AgNGggZHUgbWF0aW4sIGxhIHTDqnRlIGJhc3NlLiDCqyDDh2EgZmFpdCBkZXMgbW9pcyBxdWUgw6dhIGR1cmUuIMK7IiwidW5sb2NrIjpbImNlcmNsZSJdLCJrbyI6IlRvdXQgbGUgbW9uZGUgcGFybGUgZHUgZ2FsYSwgcGVyc29ubmUgZGUgbGEgYmFucXVlLiJ9LHsiaWQiOiJub3RhaXJlIiwidCI6IlN1aXZyZSBsZSBOb3RhaXJlIiwicCI6IkFwcsOocyBsZSBicmllZmluZywgaWwgcGFydCDDoCBwaWVkIHNvdXMgbGEgcGx1aWUuIiwic2tpbGwiOiJEaXNjcsOpdGlvbiIsImRkIjoxNSwic2VjIjoxODAsIm9rIjoiTGUgTm90YWlyZSBlbnRyZSBhdSBjb21taXNzYXJpYXQgY2VudHJhbCBwYXIgbGEgcG9ydGUgZGUgZGVycmnDqHJlIGV0IGVuIHJlc3NvcnQgZGl4IG1pbnV0ZXMgcGx1cyB0YXJkLCBsJ2FpciBzYXRpc2ZhaXQuIElsIHJlbW9udGUgZGFucyB1bmUgYmVybGluZSBub2lyZS4iLCJ1bmxvY2siOlsidm9pdHVyZSJdLCJrbyI6IklsIGjDqGxlIHVuIHRheGkgYXUgY29pbiBkZSBsYSBydWUuIFR1IGxlIHBlcmRzLiJ9LHsiaWQiOiJ2b2lzaW4iLCJ0IjoiTGUgdG9pdCB2b2lzaW4iLCJwIjoiTCdpbW1ldWJsZSBjb2xsw6kgw6AgbGEgYmFucXVlLCBjw7R0w6kgZXN0LiIsInNraWxsIjoiTXVzY2xlIiwiZGQiOjEwLCJzZWMiOjEyMCwib2siOiJMZSB0b2l0IHZvaXNpbiBlc3QgMyBtIHBsdXMgaGF1dCBxdWUgY2VsdWkgZGUgbGEgYmFucXVlLCDDoCA2IG0gZGUgZGlzdGFuY2UgOiB1bmUgdHlyb2xpZW5uZSBwYXNzZXJhaXQuIFVuZSDDqWNoZWxsZSBkZSBzZWNvdXJzIHJvdWlsbMOpZSBtb250ZSBhdXNzaSBzdXIgbGEgZmHDp2FkZSBvdWVzdCBkZSBsYSBiYW5xdWUuIiwia28iOiJMYSBwb3J0ZSBkZSBsJ2ltbWV1YmxlIGVzdCBmZXJtw6llLiBUdSB2b2lzIGp1c3RlIHVuZSDDqWNoZWxsZSByb3VpbGzDqWUgc3VyIGxlIGPDtHTDqSBkZSBsYSBiYW5xdWUuIn0seyJpZCI6Im1hcmNvIiwiaGlkZGVuIjp0cnVlLCJjb2RlIjoiTUFSQ08iLCJ0IjoiUGFybGVyIMOgIE1hcmNvIiwicCI6IkwnYWdlbnQgZCdlbnRyZXRpZW4sIGF1IGZvbmQgZHUgQ2Fmw6kgZGUgbGEgQm91cnNlLiIsInNraWxsIjoiQmFyYXRpbiIsImRkIjoxMCwic2VjIjoxMjAsIm9rIjoiTWFyY28gYWNjZXB0ZSBkJ2FpZGVyIGNvbnRyZSB1bmUgcGFydCBkdSBidXRpbi4gSWwgdGUgZG9ubmUgc29uIGJhZGdlIGRlIHNlcnZpY2UgZXQgdW4gY29uc2VpbCA6IMKrIMOAIDAwaDMwLCBjJ2VzdCBsYSByZWzDqHZlLiBMZSBQQyBzw6ljdXJpdMOpIHJlc3RlIHZpZGUgY2lucSBtaW51dGVzLiDCuyIsImdpZnQiOiJCYWRnZSBkZSBzZXJ2aWNlIGRlIE1hcmNvIChvdXZyZSBsZXMgcG9ydGVzIMOgIGJhZGdlIHNpbXBsZXMpIiwibWoiOiJNYXJjbyBkZXZpZW50IHZvdHJlIGNvbXBsaWNlLiIsImtvIjoiTWFyY28gaGF1c3NlIGxlcyDDqXBhdWxlcyA6IMKrIEondmV1eCBwYXMgZCdlbm51aXMuIMK7IElsIGZpbml0IHNhIGJpw6hyZSBldCBzJ2VuIHZhLiJ9LHsiaWQiOiJkdXZhbCIsImhpZGRlbiI6dHJ1ZSwiY29kZSI6IkRVVkFMIiwidCI6IkxlIHRyYWl0ZXVyIE1haXNvbiBEdXZhbCIsInAiOiJMZXVyIGNhbWlvbiBzZSBnYXJlIGRhbnMgbGEgcnVlbGxlIMOgIDIxaC4iLCJza2lsbCI6IkJhcmF0aW4iLCJkZCI6MTIsInNlYyI6MTIwLCJvayI6IkxlIGNoZWYgZXN0IGTDqWJvcmTDqSA6IGlsIHZvdXMgZW1iYXVjaGUgY29tbWUgZXh0cmFzLiBEZXV4IHRlbnVlcyBkZSBzZXJ2ZXVyLCBldCBsJ2VudHLDqWUgcGFyIGxhIHBvcnRlIGRlIHNlcnZpY2Ugw6AgMjFoLiIsImdpZnQiOiJUZW51ZSBkZSBzZXJ2ZXVyIChlbnRyw6llIHBhciBsYSBwb3J0ZSBkZSBzZXJ2aWNlLCBvbiBjaXJjdWxlIGF1IGdhbGEpIiwia28iOiLCqyBPbiBhIGTDqWrDoCB0b3V0IGxlIG1vbmRlLCBtZXJjaS4gwrsgTGEgcG9ydGUgZHUgY2FtaW9uIHNlIHJlZmVybWUuIn0seyJpZCI6Imludml0IiwiaGlkZGVuIjp0cnVlLCJjb2RlIjoiTEFDUk9JWCIsInQiOiJGYWJyaXF1ZXIgZGVzIGludml0YXRpb25zIiwicCI6IkF2ZWMgbGEgbGlzdGUgZCdpbnZpdMOpcyB0cm91dsOpZSBkYW5zIGxlcyBwb3ViZWxsZXMuIiwic2tpbGwiOiJUZWNobmlxdWUiLCJkZCI6MTIsInNlYyI6MTgwLCJvayI6Ik0uIGV0IE1tZSBMYWNyb2l4IHNvbnQgc3VyIGxhIGxpc3RlIG1haXMgZW4gdm95YWdlLiBUdSBpbXByaW1lcyBkZXV4IGludml0YXRpb25zIHBhcmZhaXRlcyDDoCBsZXVyIG5vbS4iLCJnaWZ0IjoiSW52aXRhdGlvbiBhdSBnYWxhIGF1IG5vbSBkZXMgTGFjcm9peCIsImtvIjoiTCdpbXByaW1hbnRlIGJhdmUgZXQgbGUgcGFwaWVyIG4nZXN0IHBhcyBsZSBib24uIFBlcnNvbm5lIG4neSBjcm9pcmEuIn0seyJpZCI6ImNlcmNsZSIsImhpZGRlbiI6dHJ1ZSwiY29kZSI6IlNBSU5UUk9DSCIsInQiOiJMZSBDZXJjbGUgU2FpbnQtUm9jaCIsInAiOiJVbiB0cmlwb3QgY2xhbmRlc3RpbiwgYXUgc291cy1zb2wgZCd1biByZXN0YXVyYW50LiIsInNraWxsIjoiQmFyYXRpbiIsImRkIjoxNCwic2VjIjoxODAsIm9rIjoiUGF1bCBGZXJyYW5kIGRvaXQgNjAgMDAwIOKCrCBhdSBjZXJjbGUuIElsIGEgc2lnbsOpIGRlcyByZWNvbm5haXNzYW5jZXMgZGUgZGV0dGVzIGV0IGVuIGdhcmRlIGRlcyBjb3BpZXMgZGFucyBsZSB0aXJvaXIgZGUgc29uIGJ1cmVhdSwgw6AgbGEgYmFucXVlLiBMZSBwYXRyb24gcmljYW5lIDogwqsgSWwgZGl0IHF1J2lsIGNvbm5hw650IGxhIG1vaXRpw6kgZHUgY29kZSBkJ3VuIGNvZmZyZS4gSWwgZmVyYWl0IG4naW1wb3J0ZSBxdW9pIHBvdXIgcydlbiBzb3J0aXIuIMK7IiwibWoiOiJWb3VzIHNhdmV6IGNvbW1lbnQgZmFpcmUgcGFybGVyIFBhdWwgRmVycmFuZC4iLCJrbyI6IkxlIHZpZGV1ciB0ZSBtZXQgZGVob3JzIGF2YW50IHF1ZSB0dSBhaWVzIHBvc8OpIHVuZSBxdWVzdGlvbi4ifSx7ImlkIjoicGxhbm5pbmciLCJoaWRkZW4iOnRydWUsImNvZGUiOiJLRVNTTEVSIiwidCI6IkxlIGRvc3NpZXIgwqsgUkggc8OpY3VyaXTDqSDCuyIsInAiOiJEYW5zIGxlIHNlcnZldXIgZGVzIGNhbcOpcmFzLiIsInNraWxsIjoiVGVjaG5pcXVlIiwiZGQiOjE0LCJzZWMiOjE4MCwib2siOiJMZSBwbGFubmluZyBkZXMgZ2FyZGVzIDogbGEgY2hlZmZlLCBCcmlnaXR0ZSBLZXNzbGVyLCBmYWl0IHVuZSByb25kZSBjb21wbMOodGUgw6AgMmgwMCwgZHUgdG9pdCBhdSBzb3VzLXNvbC4gTm90ZSBlbiByb3VnZSA6IMKrIEtlc3NsZXIgbmUgc2UgbGFpc3NlIGphbWFpcyBiYXJhdGluZXIuIMK7IEV0IGxlIHNhcyBkZXZhbnQgbGEgY2hhbWJyZSBmb3J0ZSBlc3QgcHJvdMOpZ8OpIHBhciBkZXMgbGFzZXJzLiIsIm1qIjoiUsOpdsOobGUgbGVzIGxhc2VycyBzdXIgbCfDqWNyYW4uIiwia28iOiJMZSBkb3NzaWVyIGVzdCBjaGlmZnLDqS4gVHUgbGlzIHNldWxlbWVudCB1biBub20gOiDCqyBCLiBLZXNzbGVyLCBjaGVmZmUgZGUgbGEgc8OpY3VyaXTDqSDCuy4ifSx7ImlkIjoidm9pdHVyZSIsImhpZGRlbiI6dHJ1ZSwiY29kZSI6IklNUEVSIiwidCI6IkxhIHZvaXR1cmUgZHUgTm90YWlyZSIsInAiOiJMYSBiZXJsaW5lIG5vaXJlIGdhcsOpZSBkZXZhbnQgbGUgY29tbWlzc2FyaWF0LiIsInNraWxsIjoiVGVjaG5pcXVlIiwiZGQiOjE1LCJzZWMiOjEyMCwib2siOiJEYW5zIGxhIGJvw650ZSDDoCBnYW50cyA6IHVuZSBjb252b2NhdGlvbiBkZSBwb2xpY2UgcG91ciAzaDAwIGR1IG1hdGluLCDCqyBPcMOpcmF0aW9uIFZhbG1vbnQgwrssIGF2ZWMgdW5lIHBob3RvIGRlIGNoYWN1biBkZSB2b3VzLiBMZSBOb3RhaXJlIGNvbXB0ZSB2b3VzIGxpdnJlciDDoCBsYSBwb2xpY2UuIiwibWoiOiJWb3VzIGNvbm5haXNzZXogbGEgdHJhaGlzb24gZHUgTm90YWlyZS4iLCJrbyI6IkwnYWxhcm1lIGRlIGxhIHZvaXR1cmUgc2UgbWV0IMOgIGh1cmxlci4gVHUgZmlsZXMgc2FucyByaWVuIHZvaXIuIn1d";
+  let LEADS = [];
+  try { LEADS = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(PISTES_B64), (c) => c.charCodeAt(0)))); } catch (e) { LEADS = []; }
+
+  const SKILLS = ['Muscle', 'Discrétion', 'Technique', 'Baratin'];
+  const ROLES = [
+    { name: "Le Cerveau", hp: 10, en: 8, s: [0, 1, 2, 3], ab: "Plan B (2 EN)", abd: "Une fois par scène, annule l'échec d'un coéquipier : on raconte en flash-back comment tu l'avais prévu." },
+    { name: "Le Hacker", hp: 8, en: 8, s: [0, 1, 3, 2], ab: "Boucle vidéo (2 EN)", abd: "Les caméras d'une pièce diffusent une image figée jusqu'à la fin de la scène." },
+    { name: "Le Perceur", hp: 10, en: 6, s: [1, 2, 3, 0], ab: "Doigts de fée (2 EN)", abd: "Ouvre une serrure, un casier ou un coffre mural sans jet. Avec la perceuse, une réussite compte double." },
+    { name: "Le Gros Bras", hp: 14, en: 6, s: [3, 0, 1, 2], ab: "Mur humain (1 EN)", abd: "Prends les dégâts à la place d'un allié proche. Ou assomme un garde de face, en silence (Muscle DD 12)." },
+    { name: "Le Beau Parleur", hp: 8, en: 8, s: [0, 2, 1, 3], ab: "Je suis attendu (2 EN)", abd: "Un PNJ pas encore en alerte croit ton mensonge sans jet. Ne marche pas sur la cheffe de la sécurité." },
+    { name: "L'Acrobate", hp: 10, en: 7, s: [2, 3, 1, 0], ab: "Passe-muraille (2 EN)", abd: "Traverse des lasers, grimpe une façade ou descends en rappel sans jet." }
+  ];
+  const GEAR = [
+    ["Crochets de serrurier", 1, "+2 pour crocheter serrures et casiers."],
+    ["Gants et combinaison noire", 1, "+1 en Discrétion, aucune empreinte."],
+    ["Lampe UV", 1, "+3 pour trouver un code sur un clavier."],
+    ["Corde et grappin", 1, "Monter ou descendre d'un étage par la façade (Muscle DD 12)."],
+    ["Fumigènes ×2", 1, "Gardes aveuglés 2 tours (−5 à leurs jets)."],
+    ["Boissons énergisantes ×2", 1, "+2 énergie chacune."],
+    ["Kit médical ×2", 1, "Rend 4 PV ou relève un allié à terre."],
+    ["Faux badge employé", 1, "Ouvre les portes à badge simples."],
+    ["Ventouse à verre", 1, "Découpe une vitre ou un panneau de la verrière en silence."],
+    ["Colliers de serrage ×5", 1, "Ligote un garde assommé."],
+    ["Brouilleur de caméras", 2, "Coupe les caméras d'une pièce 3 tours. 3 utilisations."],
+    ["Taser", 2, "Garde neutralisé 3 tours (DD 12). 3 charges."],
+    ["Lunettes thermiques", 2, "Voit les lasers (+3) et les gardes derrière les cloisons."],
+    ["Costume de gala + invitation", 2, "Accès libre au 1er étage pendant le gala, +2 en Baratin avec les invités."],
+    ["Uniforme de garde", 2, "+3 en Baratin face aux gardes qui ne te connaissent pas."],
+    ["Ordinateur de piratage", 2, "+3 en Technique sur tout ce qui est électronique."],
+    ["Cloneur de badge", 2, "Frôle un PNJ (Discrétion DD 12) pour copier son badge."],
+    ["Tyrolienne", 2, "Passage silencieux entre le toit voisin et la banque."],
+    ["Perceuse thermique", 3, "Perce la chambre forte : 4 réussites en Technique DD 15."],
+    ["Charge de brèche", 3, "Ouvre un mur ou une porte non blindée. Très bruyant."]
+  ];
+  const BUDGET = 4;
+  const pic = (name) => (window.ValmontPortraits ? ValmontPortraits.svg(name) : '');
+  const DIFF = (dd) => dd <= 8 ? 'facile' : dd <= 10 ? 'assez facile' : dd <= 12 ? 'moyen' : dd <= 14 ? 'difficile' : 'très difficile';
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const dur = (sec) => sec % 60 ? `${Math.floor(sec / 60)} min ${sec % 60} s` : `${sec / 60} min`;
+
+  /* ---------- état (gardé sur ce téléphone) ---------- */
+  const KEY = 'valmont-carnet';
+  const blank = () => ({ step: 'perso', name: '', role: -1, hp: 0, en: 0, gear: [], used: {}, prep: { minutes: 15, start: 0, end: 0, cur: null, done: {}, open: [], penalty: 0, order: [] }, boost: false, last: null });
+  let S = blank();
+  try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(blank(), JSON.parse(raw)); S.prep = Object.assign(blank().prep, S.prep || {}); } catch (e) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+  const role = () => ROLES[S.role];
+  const spent = () => S.gear.reduce((t, n) => t + ((GEAR.find((g) => g[0] === n) || [0, 0])[1]), 0);
+  const gifts = () => S.prep.order.map((id) => S.prep.done[id]).filter((r) => r && r.ok && r.gift).map((r) => r.gift);
+  const lead = (id) => LEADS.find((l) => l.id === id);
+  const visible = () => LEADS.filter((l) => !l.hidden || S.prep.open.includes(l.id));
+
+  const $view = document.getElementById('view');
+  const TABS = [['perso', '1', 'Perso'], ['matos', '2', 'Matériel'], ['reperage', '3', 'Repérage'], ['fiche', '4', 'Fiche']];
+  function go(step) { S.step = step; save(); render(); window.scrollTo(0, 0); }
+
+  function render() {
+    document.getElementById('who').textContent = S.name ? S.name + (role() ? ' · ' + role().name : '') : '';
+    document.getElementById('tabs').innerHTML = TABS.map(([k, n, l]) => `<button class="${S.step === k ? 'on' : ''}" data-tab="${k}" ${k !== 'perso' && S.role < 0 ? 'disabled' : ''}><b>${n}</b>${l}</button>`).join('');
+    ({ perso, matos, reperage, fiche })[S.step]();
+  }
+
+  /* ---------- 1. perso ---------- */
+  function perso() {
+    $view.innerHTML = `<div style="display:grid;gap:14px">
+      <div class="card"><h2>Ton braqueur</h2>
+        <label class="muted" for="name">Nom de code</label>
+        <input type="text" id="name" maxlength="18" placeholder="Ex. : Le Chat" value="${esc(S.name)}" autocomplete="off"></div>
+      <p class="muted">Choisis un rôle. Mettez-vous d'accord avec ton équipe pour ne pas prendre le même.</p>
+      <div class="roles">${ROLES.map((r, i) => `
+        <button class="role ${S.role === i ? 'on' : ''}" data-role="${i}" aria-pressed="${S.role === i}">
+          <span class="pic">${pic(r.name)}</span><div>
+          <div class="role-top"><b>${r.name}</b><span><span class="hp">${r.hp} PV</span> · <span class="en">${r.en} EN</span></span></div>
+          <div class="stats">${SKILLS.map((k, j) => `<span><b>+${r.s[j]}</b>${k}</span>`).join('')}</div>
+          <small><b>${r.ab}</b> : ${r.abd}</small></div>
+        </button>`).join('')}</div>
+      <button class="btn go full" data-next="matos" ${S.role < 0 || !S.name ? 'disabled' : ''}>Suivant : le matériel</button>
+    </div>`;
+    const nm = document.getElementById('name');
+    nm.addEventListener('input', () => { S.name = nm.value.trim().slice(0, 18); save(); document.querySelector('[data-next]').disabled = S.role < 0 || !S.name; document.getElementById('who').textContent = S.name; });
+  }
+
+  /* ---------- 2. matériel ---------- */
+  function matos() {
+    const left = BUDGET - spent();
+    const g = gifts();
+    $view.innerHTML = `<div style="display:grid;gap:12px">
+      <div class="points"><span>Points restants</span><b>${left} / ${BUDGET}</b></div>
+      <p class="muted">Touche un objet pour le prendre ou le reposer. Talkie-walkie, cagoule et sac de sport sont fournis.</p>
+      <div class="items">${GEAR.map(([n, c, d]) => { const on = S.gear.includes(n); return `
+        <button class="item ${on ? 'on' : ''}" data-gear="${esc(n)}" aria-pressed="${on}" ${!on && c > left ? 'disabled' : ''}>
+          <b>${esc(n)}</b><span class="cost">${on ? '✓ ' : ''}${c} pt${c > 1 ? 's' : ''}</span><small>${esc(d)}</small></button>`; }).join('')}</div>
+      ${g.length ? `<div class="card"><b>Obtenu pendant le repérage</b>${g.map((x) => `<div class="gift">${esc(x)}</div>`).join('')}</div>` : ''}
+      <button class="btn go full" data-next="reperage">Suivant : le repérage</button>
+    </div>`;
+  }
+
+  /* ---------- 3. repérage ---------- */
+  function reperage() {
+    const P = S.prep, now = Date.now();
+    if (!P.start) {
+      $view.innerHTML = `<div style="display:grid;gap:14px">
+        <div class="card"><h2>Le repérage</h2>
+          <p>Avant le casse, vous avez un temps limité pour vous renseigner. Chaque piste prend du temps <b>réel</b> : pendant qu'elle avance, discutez de votre plan avec ton équipe.</p>
+          <p>Tu ne pourras pas tout faire. Partagez-vous les pistes, et quand tu débloques une piste cachée, donne le <b>mot-clé</b> à tes coéquipiers pour qu'ils puissent la suivre aussi.</p>
+          <p class="muted">Attends le signal du MJ pour lancer le chrono.</p></div>
+        <div class="card"><b>Durée choisie par le MJ</b><div class="row">${[10, 15, 20].map((m) => `<button class="btn ${P.minutes === m ? 'go' : ''}" data-min="${m}">${m} min</button>`).join('')}</div></div>
+        <button class="btn go full" id="startPrep">Lancer le chrono</button>
+      </div>`;
+      return;
+    }
+    const left = P.end - now, over = left <= 0;
+    const cur = P.cur && lead(P.cur.id);
+    const res = S.last && P.done[S.last];
+    $view.innerHTML = `<div style="display:grid;gap:12px">
+      <div class="clock ${left < 120000 ? 'late' : ''}"><div><span>Temps restant</span><br><b id="prepClock">${mmss(left)}</b></div><div style="text-align:right"><span>Pistes</span><br><b style="font-size:1.4rem">${Object.keys(P.done).length}</b></div></div>
+      ${res ? resultCard(lead(S.last), res, true) : ''}
+      ${cur ? busyCard(cur) : over ? `<div class="card"><h2>Temps écoulé</h2><p>Le repérage est fini. Montre ton carnet à ton équipe et passez au plan. Les infos marquées « Pour le MJ » sont à lui dire.</p><button class="btn go full" data-next="fiche">Ouvrir ma fiche</button></div>` : `
+        <label class="boost"><input type="checkbox" id="boost" ${S.boost ? 'checked' : ''} ${S.en < 1 ? 'disabled' : ''}><span>Forcer la prochaine piste : <b>+3</b> au jet, coûte 1 énergie (il t'en reste ${S.en})</span></label>
+        <div class="leads">${visible().filter((l) => !P.done[l.id]).map((l) => { const tight = l.sec * 1000 > left; return `
+          <button class="lead ${l.hidden ? 'new' : ''}" data-lead="${l.id}" ${tight ? 'disabled' : ''}>
+            <div class="lt"><b>${esc(l.t)}</b><em>${dur(l.sec)}</em></div>
+            <small>${esc(l.p)}</small>
+            <span class="meta">${esc(l.skill)} · ${DIFF(l.dd)}${tight ? ' · plus le temps' : ''}</span></button>`; }).join('') || '<p class="muted">Tu as suivi toutes les pistes que tu connais. Un coéquipier a peut-être un mot-clé pour toi.</p>'}</div>`}
+      <form class="card" id="codeForm" autocomplete="off"><b>Un coéquipier t'a donné un mot-clé ?</b>
+        <div class="row"><input type="text" id="code" placeholder="Mot-clé" aria-label="Mot-clé"><button class="btn" type="submit">Débloquer</button></div>
+        <p class="muted" id="codeMsg" style="font-size:.88rem"></p></form>
+      <div style="display:grid;gap:8px"><h2>Mon carnet</h2>
+        ${P.order.length ? P.order.slice().reverse().map((id) => resultCard(lead(id), P.done[id], false)).join('') : '<p class="muted">Rien pour l\'instant.</p>'}
+        ${P.penalty ? `<p class="alertline">Pour le MJ : alerte de départ +${P.penalty} (tu t'es fait remarquer).</p>` : ''}</div>
+    </div>`;
+  }
+  function busyCard(l) {
+    const c = S.prep.cur, total = l.sec * 1000, left = c.until - Date.now(), ready = left <= 0;
+    return `<div class="busy"><b>${esc(l.t)}</b>
+      <span class="muted">${ready ? 'C\'est fait. Découvre ce que tu as trouvé.' : `En cours (${esc(l.skill)}${c.boost ? ', forcé +3' : ''})… Pendant ce temps, discute du plan avec ton équipe.`}</span>
+      <div class="bar"><i id="busyBar" style="width:${Math.min(100, (1 - Math.max(0, left) / total) * 100)}%"></i></div>
+      ${ready ? '<button class="btn go full" id="reveal">Voir le résultat</button>' : `<span class="k" id="busyLeft">${mmss(left)}</span>`}</div>`;
+  }
+  function resultCard(l, r, fresh) {
+    if (!l || !r) return '';
+    return `<div class="clue ${r.ok ? '' : 'ko'} ${fresh ? 'reveal ' + (r.ok ? '' : 'ko') : ''}">
+      ${fresh ? `<div class="row" style="justify-content:space-between"><span class="bigroll">${r.total}</span><b class="${r.ok ? 'en' : 'hp'}">${r.d === 20 ? 'Réussite spectaculaire !' : r.d === 1 ? 'Catastrophe !' : r.ok ? 'Réussite' : 'Échec'}</b></div>` : ''}
+      <b>${esc(l.t)}</b>
+      <p>${esc(r.ok ? l.ok : l.ko)}</p>
+      <span class="roll">dé ${r.d} + ${r.mod}${r.boost ? ' + 3' : ''} = ${r.total} (${esc(l.skill)})${r.d === 20 ? ' · 1 minute de gagnée' : ''}</span>
+      ${r.ok && l.unlock ? l.unlock.map((u) => { const x = lead(u); return x ? `<span class="code">Nouvelle piste : ${esc(x.t)}. Mot-clé pour ton équipe : ${esc(x.code)}</span>` : ''; }).join('') : ''}
+      ${r.ok && l.gift ? `<div class="gift">Tu obtiens : ${esc(l.gift)}</div>` : ''}
+      ${r.ok && l.mj ? `<span class="mj">Pour le MJ : ${esc(l.mj)}</span>` : ''}
+      ${r.d === 1 ? '<span class="alertline">Pour le MJ : tu t\'es fait remarquer, alerte de départ +1.</span>' : ''}
+      ${fresh ? '<button class="btn full" id="okRes">J\'ai noté</button>' : ''}</div>`;
+  }
+
+  /* ---------- 4. fiche ---------- */
+  function fiche() {
+    const r = role();
+    if (!r) return go('perso');
+    const items = S.gear.map((n) => GEAR.find((g) => g[0] === n)).filter(Boolean).map((g) => [g[0], g[2]]).concat(gifts().map((x) => [x, 'Obtenu pendant le repérage']));
+    const clues = S.prep.order.map((id) => [lead(id), S.prep.done[id]]).filter(([l, x]) => l && x);
+    $view.innerHTML = `<div style="display:grid;gap:12px">
+      <div class="me"><span class="pic">${pic(r.name)}</span><div><b>${esc(S.name)}</b><span>${esc(r.name)}</span></div></div>
+      <div class="pool">
+        <div class="stp"><button data-pool="hp" data-d="-1" aria-label="Perdre 1 PV">−</button><div><small>PV</small><b class="hp">${S.hp}/${r.hp}</b></div><button data-pool="hp" data-d="1" aria-label="Regagner 1 PV">+</button></div>
+        <div class="stp"><button data-pool="en" data-d="-1" aria-label="Dépenser 1 énergie">−</button><div><small>ÉNERGIE</small><b class="en">${S.en}/${r.en}</b></div><button data-pool="en" data-d="1" aria-label="Regagner 1 énergie">+</button></div>
+      </div>
+      ${S.hp <= 0 ? '<p class="alertline">Tu es à terre : un coéquipier doit te relever avec un kit médical.</p>' : ''}
+      <div class="card"><b>Lancer le d20</b><p class="muted" style="font-size:.88rem">Touche la compétence que le MJ te demande. Il te dira si tu as réussi.</p>
+        <label class="boost"><input type="checkbox" id="fboost" ${S.en < 1 ? 'disabled' : ''}><span>Effort : <b>+3</b> pour 1 énergie</span></label>
+        <div class="skills">${SKILLS.map((k, j) => `<button class="skill" data-roll="${j}"><small>${k}</small><b>+${r.s[j]}</b><span>Lancer</span></button>`).join('')}</div>
+        <div id="froll" class="clue" hidden></div></div>
+      <div class="card"><b>${esc(r.ab)}</b><p class="muted" style="font-size:.9rem">${esc(r.abd)}</p></div>
+      <div style="display:grid;gap:8px"><h2>Matériel</h2>
+        ${items.length ? `<div class="gearlist">${items.map(([n, d], i) => `<label class="${S.used[n] ? 'used' : ''}"><input type="checkbox" data-used="${esc(n)}" ${S.used[n] ? 'checked' : ''}><span>${esc(n)}<small>${esc(d)}</small></span></label>`).join('')}</div>` : '<p class="muted">Aucun matériel.</p>'}
+        <p class="muted" style="font-size:.85rem">Coche un objet quand il est utilisé ou cassé.</p></div>
+      <div style="display:grid;gap:8px"><h2>Ce que je sais</h2>
+        ${clues.filter(([, x]) => x.ok).map(([l]) => `<div class="clue"><b>${esc(l.t)}</b><p>${esc(l.ok)}</p></div>`).join('') || '<p class="muted">Aucune info trouvée pendant le repérage.</p>'}</div>
+      <button class="danger" id="resetAll">${confirmReset ? 'Toucher encore pour tout effacer' : 'Effacer ce carnet (nouvelle partie)'}</button>
+    </div>`;
+  }
+  let confirmReset = false;
+
+  /* ---------- actions ---------- */
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    const d = b.dataset;
+    if (b.id !== 'resetAll') confirmReset = false;
+    if (d.tab) return go(d.tab);
+    if (d.next) return go(d.next);
+    if (d.role != null) { const r = ROLES[+d.role]; S.role = +d.role; S.hp = r.hp; S.en = r.en; save(); return render(); }
+    if (d.gear) { const n = d.gear; S.gear = S.gear.includes(n) ? S.gear.filter((x) => x !== n) : S.gear.concat(n); if (spent() > BUDGET) S.gear.pop(); save(); return render(); }
+    if (d.min) { S.prep.minutes = +d.min; save(); return render(); }
+    if (b.id === 'startPrep') { S.prep.start = Date.now(); S.prep.end = S.prep.start + S.prep.minutes * 60000; save(); return render(); }
+    if (d.lead) {
+      const l = lead(d.lead);
+      if (!l || S.prep.cur || S.prep.done[l.id] || Date.now() + l.sec * 1000 > S.prep.end) return;
+      const boost = S.boost && S.en > 0;
+      if (boost) S.en -= 1;
+      S.prep.cur = { id: l.id, until: Date.now() + l.sec * 1000, boost };
+      S.boost = false; S.last = null; save(); return render();
+    }
+    if (b.id === 'reveal') {
+      const c = S.prep.cur, l = c && lead(c.id);
+      if (!l) return;
+      const mod = role().s[SKILLS.indexOf(l.skill)] || 0, dd = l.dd;
+      const dv = 1 + Math.floor(Math.random() * 20), total = dv + mod + (c.boost ? 3 : 0);
+      const ok = dv === 20 || (dv !== 1 && total >= dd);
+      S.prep.done[l.id] = { ok, d: dv, mod, boost: c.boost, total, gift: ok ? l.gift : null };
+      S.prep.order.push(l.id);
+      if (ok && l.unlock) l.unlock.forEach((u) => { if (!S.prep.open.includes(u)) S.prep.open.push(u); });
+      if (dv === 1) S.prep.penalty += 1;
+      if (dv === 20) S.prep.end += 60000;
+      S.prep.cur = null; S.last = l.id; save(); return render();
+    }
+    if (b.id === 'okRes') { S.last = null; save(); return render(); }
+    if (d.pool) { const r = role(), k = d.pool; S[k] = Math.max(0, Math.min(r[k], S[k] + Number(d.d))); save(); return render(); }
+    if (d.roll != null) {
+      const r = role(), j = +d.roll, fb = document.getElementById('fboost'), boost = fb && fb.checked && S.en > 0;
+      if (boost) { S.en -= 1; save(); }
+      const dv = 1 + Math.floor(Math.random() * 20), total = dv + r.s[j] + (boost ? 3 : 0);
+      render();
+      const box = document.getElementById('froll');
+      box.hidden = false;
+      box.innerHTML = `<div class="row" style="justify-content:space-between"><span class="bigroll">${total}</span><b>${SKILLS[j]}</b></div><span class="roll">dé ${dv} + ${r.s[j]}${boost ? ' + 3 (effort)' : ''}${dv === 20 ? ' · 20 naturel !' : dv === 1 ? ' · 1 naturel…' : ''}</span>`;
+      box.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (b.id === 'resetAll') { if (!confirmReset) { confirmReset = true; return render(); } confirmReset = false; S = blank(); save(); return render(); }
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'boost') { S.boost = e.target.checked; save(); }
+    if (e.target.dataset && e.target.dataset.used) { S.used[e.target.dataset.used] = e.target.checked; save(); render(); }
+  });
+  document.addEventListener('submit', (e) => {
+    if (e.target.id !== 'codeForm') return;
+    e.preventDefault();
+    const v = norm(document.getElementById('code').value);
+    const l = LEADS.find((x) => x.hidden && norm(x.code) === v);
+    const msg = document.getElementById('codeMsg');
+    if (!l) { msg.textContent = 'Ce mot-clé ne correspond à rien. Vérifie l\'orthographe.'; return; }
+    if (S.prep.open.includes(l.id)) { msg.textContent = 'Tu as déjà cette piste.'; return; }
+    S.prep.open.push(l.id); save(); render();
+    const m2 = document.getElementById('codeMsg'); if (m2) m2.textContent = 'Nouvelle piste : ' + l.t;
+  });
+
+  // minuteurs
+  setInterval(() => {
+    if (S.step !== 'reperage' || !S.prep.start) return;
+    const P = S.prep, now = Date.now();
+    const clk = document.getElementById('prepClock');
+    if (clk) clk.textContent = mmss(P.end - now);
+    if (P.cur) {
+      const l = lead(P.cur.id), left = P.cur.until - now;
+      const bar = document.getElementById('busyBar'), lt = document.getElementById('busyLeft');
+      if (bar && l) bar.style.width = Math.min(100, (1 - Math.max(0, left) / (l.sec * 1000)) * 100) + '%';
+      if (lt) lt.textContent = mmss(left);
+      if (left <= 0 && lt) render();
+    } else if (P.end - now <= 0 && !document.querySelector('[data-next="fiche"]') && !S.last) render();
+  }, 500);
+
+  if (!LEADS.length) { $view.innerHTML = '<div class="card">Le carnet n\'a pas pu se charger. Recharge la page.</div>'; }
+  else render();
+})();
+</script>
