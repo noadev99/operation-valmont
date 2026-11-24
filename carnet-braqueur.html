@@ -466,6 +466,51 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
 
 </script>
 <script>
+/* Relais en ligne entre appareils (téléphone des joueurs, console du MJ, télé), via ntfy.sh :
+   un service public gratuit, sans compte. Chaque salon a son propre canal, nommé d'après son code.
+   ValmontRelay.open(code, onMessage, onStatus) → { send(objet), close() }
+   ValmontRelay.newCode()                       → un code de salon au hasard
+   Une page publiée sur Claude ne peut pas appeler ce service : onStatus reçoit alors « off ». */
+(function () {
+  const HOST = 'https://ntfy.sh/';
+  const topic = (code) => 'valmont-' + String(code).toLowerCase();
+  function newCode() {
+    const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from({ length: 6 }, () => A[Math.floor(Math.random() * A.length)]).join('');
+  }
+  function open(code, onMessage, onStatus) {
+    const url = HOST + topic(code);
+    let es = null, closed = false, ok = true, seen = new Set();
+    const say = (st) => { if (onStatus) onStatus(st); };
+    function start() {
+      if (closed) return;
+      try { es = new EventSource(url + '/sse?since=all'); } catch (e) { say('off'); return; }
+      es.onopen = () => say('on');
+      es.onerror = () => say(ok ? 'retry' : 'off');
+      es.onmessage = (ev) => {
+        try {
+          const m = JSON.parse(ev.data);
+          if (m.event && m.event !== 'message') return;
+          if (seen.has(m.id)) return; seen.add(m.id);
+          onMessage(JSON.parse(m.message), (m.time || 0) * 1000);
+        } catch (e) { /* message qui n'est pas pour nous */ }
+      };
+    }
+    start();
+    return {
+      send(obj) {
+        return fetch(url, { method: 'POST', body: JSON.stringify(obj) })
+          .then((r) => { ok = r.ok; if (!r.ok) say('off'); return r.ok; })
+          .catch(() => { ok = false; say('off'); return false; });
+      },
+      close() { closed = true; if (es) es.close(); },
+    };
+  }
+  window.ValmontRelay = { open, newCode };
+})();
+
+</script>
+<script>
 (function () {
   /* Les pistes sont encodées pour que personne ne lise les réponses par accident. */
   const PISTES_B64 = "W3siaWQiOiJwcmVzc2UiLCJ0IjoiTGEgcHJlc3NlIGxvY2FsZSIsInAiOiJMZXMgYXJ0aWNsZXMgc3VyIGxlcyAxNTAgYW5zIGRlIGxhIGJhbnF1ZS4iLCJza2lsbCI6IkJhcmF0aW4iLCJkZCI6OCwic2VjIjo5MCwib2siOiJMYSBjaGFtYnJlIGZvcnRlIGEgdW5lIHNlcnJ1cmUgw6AgdGVtcG9yaXNhdGlvbiA6IGVsbGUgcydvdXZyZSBzZXVsZSDDoCA2aDAwIHBvdXIgbGUgZm91cmdvbiBibGluZMOpLiBMZSByZXN0ZSBkdSB0ZW1wcywgaWwgZmF1dCB1biBjb2RlIMOgIDggY2hpZmZyZXMgZXQgbCdlbXByZWludGUgZGUgbGEgZGlyZWN0cmljZS4iLCJrbyI6IlF1ZSBkZXMgcGhvdG9zIGRlIHBldGl0cyBmb3Vycy4gVW5lIHNldWxlIGluZm8gdXRpbGUgOiBsZSBmb3VyZ29uIGJsaW5kw6kgYXJyaXZlIMOgIDZoMDAuIn0seyJpZCI6ImJhciIsInQiOiJMZSBDYWbDqSBkZSBsYSBCb3Vyc2UiLCJwIjoiTGUgYmFyIGVuIGZhY2UgZGUgbGEgYmFucXVlLCBvw7kgbGUgcGVyc29ubmVsIHZpZW50IGJvaXJlIHVuIHZlcnJlLiIsInNraWxsIjoiQmFyYXRpbiIsImRkIjoxMCwic2VjIjoxMjAsIm9rIjoiTGUgYmFybWFuIHRlIHBhcmxlIGRlIE1hcmNvLCBsJ2FnZW50IGQnZW50cmV0aWVuIGRlIGxhIGJhbnF1ZS4gSWwgdmllbnQgaWNpIGFwcsOocyBzb24gc2VydmljZSBldCBpbCBkw6l0ZXN0ZSBsZXMgVmFsbW9udCBkZXB1aXMgcXUnaWxzIG9udCBsaWNlbmNpw6kgc2Egc8WTdXIuIiwidW5sb2NrIjpbIm1hcmNvIl0sImtvIjoiTGUgYmFybWFuIHNlIG3DqWZpZSBldCBuZSBkaXQgcmllbi4gVHUgcmVtYXJxdWVzIGp1c3RlIGRlcyBiYWRnZXMgwqsgVmFsbW9udCAmIEZpbHMgwrsgc3VyIGxlIGNvbXB0b2lyLiJ9LHsiaWQiOiJmYWNhZGUiLCJ0IjoiU3VydmVpbGxlciBsYSBmYcOnYWRlIiwicCI6IkRlcHVpcyBsYSBjYW1pb25uZXR0ZSwganVtZWxsZXMgZW4gbWFpbi4iLCJza2lsbCI6IkRpc2Nyw6l0aW9uIiwiZGQiOjEwLCJzZWMiOjE4MCwib2siOiJUdSBjb21wdGVzIGxlcyBnYXJkZXMgOiB1bmUgZ2FyZGUgZmFpdCBsZSB0b3VyIGR1IGhhbGwsIHVuIGdhcmRlIGZ1bWUgc3VyIGxlIHRvaXQgcHLDqHMgZHUgY2FiYW5vbiB0b3V0ZXMgbGVzIDMwIG1pbnV0ZXMsIGV0IHVuIGF1dHJlIHNvbW5vbGUgYXUgcGFya2luZyBkdSBzb3VzLXNvbC4iLCJtaiI6IlLDqXbDqGxlIGxlcyBnYXJkZXMgZXQgbGV1cnMgcm9uZGVzIHN1ciBsJ8OpY3Jhbi4iLCJrbyI6IkRlcyBzaWxob3VldHRlcyBwYXNzZW50IGRlcnJpw6hyZSBsZXMgdml0cmVzLiBJbXBvc3NpYmxlIGRlIHNhdm9pciBjb21iaWVuLiJ9LHsiaWQiOiJjYW1zIiwidCI6IlBpcmF0ZXIgbGVzIGNhbcOpcmFzIGRlIGxhIHJ1ZSIsInAiOiJMZSByw6lzZWF1IGRlIHZpZMOpb3N1cnZlaWxsYW5jZSBkZSBsYSBwbGFjZSBlc3QgbWFsIHByb3TDqWfDqS4iLCJza2lsbCI6IlRlY2huaXF1ZSIsImRkIjoxMiwic2VjIjoxODAsIm9rIjoiVHUgcsOpY3Vww6hyZXMgbGUgc2Now6ltYSBkZSB0b3V0ZXMgbGVzIGNhbcOpcmFzIGRlIGxhIGJhbnF1ZS4gRWxsZXMgc29udCByZWxpw6llcyBhdSBQQyBzw6ljdXJpdMOpIGR1IHJlei1kZS1jaGF1c3PDqWUuIERhbnMgbGUgbcOqbWUgc2VydmV1ciwgdW4gZG9zc2llciDCqyBSSCBzw6ljdXJpdMOpIMK7IGF0dGlyZSB0b24gxZNpbC4iLCJtaiI6IlLDqXbDqGxlIGxlcyBjYW3DqXJhcyBzdXIgbCfDqWNyYW4uIiwidW5sb2NrIjpbInBsYW5uaW5nIl0sImtvIjoiTGUgcGFyZS1mZXUgdGUgYmxvcXVlLiBUdSBhcyBqdXN0ZSBsZSB0ZW1wcyBkZSB2b2lyIHF1J2lsIHkgYSBkZXMgY2Ftw6lyYXMgZGFucyBjaGFxdWUgY291bG9pci4ifSx7ImlkIjoicG91YmVsbGVzIiwidCI6IkZvdWlsbGVyIGxlcyBwb3ViZWxsZXMiLCJwIjoiTGVzIGJlbm5lcyBkZSBsYSBydWVsbGUsIGRlcnJpw6hyZSBsYSBiYW5xdWUuIiwic2tpbGwiOiJEaXNjcsOpdGlvbiIsImRkIjoxMiwic2VjIjoxMjAsIm9rIjoiVW4gYm9uIGRlIGxpdnJhaXNvbiBkdSB0cmFpdGV1ciBNYWlzb24gRHV2YWwgKGxpdnJhaXNvbiDDoCAyMWggcGFyIGxhIHBvcnRlIGRlIHNlcnZpY2UpIGV0IHVuZSBsaXN0ZSBkJ2ludml0w6lzIGR1IGdhbGEsIGZyb2lzc8OpZS4iLCJ1bmxvY2siOlsiZHV2YWwiLCJpbnZpdCJdLCJrbyI6IkRlcyDDqXBsdWNodXJlcywgZHUgY2FydG9uIGV0IHVuIGNoYXQgdHLDqHMgZW4gY29sw6hyZS4ifSx7ImlkIjoiY2FkYXN0cmUiLCJ0IjoiTGUgY2FkYXN0cmUgZGUgbGEgbWFpcmllIiwicCI6IkxlcyB2aWV1eCBwbGFucyBkdSBiw6J0aW1lbnQsIGF1eCBhcmNoaXZlcyBtdW5pY2lwYWxlcy4iLCJza2lsbCI6IlRlY2huaXF1ZSIsImRkIjoxMiwic2VjIjoxODAsIm9rIjoiU3VyIGxlcyBwbGFucyBkZSAxOTYyIDogdW5lIGdhaW5lIGRlIHZlbnRpbGF0aW9uIGRlc2NlbmQgZHUgdG9pdCBqdXNxdSfDoCBsYSBjaGF1ZmZlcmllIGR1IHNvdXMtc29sLCBldCB1bmUgZ3JpbGxlIGRlIGxhIGNoYXVmZmVyaWUgZG9ubmUgc3VyIGxlcyDDqWdvdXRzLiIsImtvIjoiTCdhcmNoaXZpc3RlIGZlcm1lIGRhbnMgZGl4IG1pbnV0ZXMuIFR1IHJlcGFycyBicmVkb3VpbGxlLiJ9LHsiaWQiOiJoZWxlbmUiLCJ0IjoiTGVzIHLDqXNlYXV4IHNvY2lhdXggZCdIw6lsw6huZSIsInAiOiJMYSBkaXJlY3RyaWNlIHBvc3RlIGJlYXVjb3VwIGRlIHBob3Rvcy4iLCJza2lsbCI6IlRlY2huaXF1ZSIsImRkIjoxMCwic2VjIjoxMjAsIm9rIjoiVW5lIHBob3RvIGRlIHNvbiBidXJlYXUgOiBkZXJyacOocmUgZWxsZSwgdW4gZ3JhbmQgdGFibGVhdSB1biBwZXUgZGUgdHJhdmVycy4gU29uIGRlcm5pZXIgbWVzc2FnZSA6IMKrIERpc2NvdXJzIMOgIDIzaDMwICEgSmUgbW9udGVyYWkgbWUgcHLDqXBhcmVyIGRhbnMgbW9uIGJ1cmVhdSB2ZXJzIDIzaDIwLiDCuyIsImtvIjoiU29uIGNvbXB0ZSBlc3QgcHJpdsOpLiBUdSB2b2lzIHNldWxlbWVudCBzYSBwaG90byBkZSBwcm9maWwsIHVuZSBjb3VwZSBkZSBjaGFtcGFnbmUgw6AgbGEgbWFpbi4ifSx7ImlkIjoicnVtZXVycyIsInQiOiJMZXMgcnVtZXVycyBkdSBxdWFydGllciIsInAiOiJMZSBraW9zcXVlIMOgIGpvdXJuYXV4LCBsYSBib3VsYW5nZXJpZSwgbGUgY29yZG9ubmllci4iLCJza2lsbCI6IkJhcmF0aW4iLCJkZCI6MTIsInNlYyI6MTIwLCJvayI6IkxlIGtpb3NxdWllciBhIHZ1IFBhdWwgRmVycmFuZCwgbGUgZGlyZWN0ZXVyIGQnYWdlbmNlLCBzb3J0aXIgZHUgQ2VyY2xlIFNhaW50LVJvY2ggw6AgNGggZHUgbWF0aW4sIGxhIHTDqnRlIGJhc3NlLiDCqyDDh2EgZmFpdCBkZXMgbW9pcyBxdWUgw6dhIGR1cmUuIMK7IiwidW5sb2NrIjpbImNlcmNsZSJdLCJrbyI6IlRvdXQgbGUgbW9uZGUgcGFybGUgZHUgZ2FsYSwgcGVyc29ubmUgZGUgbGEgYmFucXVlLiJ9LHsiaWQiOiJub3RhaXJlIiwidCI6IlN1aXZyZSBsZSBOb3RhaXJlIiwicCI6IkFwcsOocyBsZSBicmllZmluZywgaWwgcGFydCDDoCBwaWVkIHNvdXMgbGEgcGx1aWUuIiwic2tpbGwiOiJEaXNjcsOpdGlvbiIsImRkIjoxNSwic2VjIjoxODAsIm9rIjoiTGUgTm90YWlyZSBlbnRyZSBhdSBjb21taXNzYXJpYXQgY2VudHJhbCBwYXIgbGEgcG9ydGUgZGUgZGVycmnDqHJlIGV0IGVuIHJlc3NvcnQgZGl4IG1pbnV0ZXMgcGx1cyB0YXJkLCBsJ2FpciBzYXRpc2ZhaXQuIElsIHJlbW9udGUgZGFucyB1bmUgYmVybGluZSBub2lyZS4iLCJ1bmxvY2siOlsidm9pdHVyZSJdLCJrbyI6IklsIGjDqGxlIHVuIHRheGkgYXUgY29pbiBkZSBsYSBydWUuIFR1IGxlIHBlcmRzLiJ9LHsiaWQiOiJ2b2lzaW4iLCJ0IjoiTGUgdG9pdCB2b2lzaW4iLCJwIjoiTCdpbW1ldWJsZSBjb2xsw6kgw6AgbGEgYmFucXVlLCBjw7R0w6kgZXN0LiIsInNraWxsIjoiTXVzY2xlIiwiZGQiOjEwLCJzZWMiOjEyMCwib2siOiJMZSB0b2l0IHZvaXNpbiBlc3QgMyBtIHBsdXMgaGF1dCBxdWUgY2VsdWkgZGUgbGEgYmFucXVlLCDDoCA2IG0gZGUgZGlzdGFuY2UgOiB1bmUgdHlyb2xpZW5uZSBwYXNzZXJhaXQuIFVuZSDDqWNoZWxsZSBkZSBzZWNvdXJzIHJvdWlsbMOpZSBtb250ZSBhdXNzaSBzdXIgbGEgZmHDp2FkZSBvdWVzdCBkZSBsYSBiYW5xdWUuIiwia28iOiJMYSBwb3J0ZSBkZSBsJ2ltbWV1YmxlIGVzdCBmZXJtw6llLiBUdSB2b2lzIGp1c3RlIHVuZSDDqWNoZWxsZSByb3VpbGzDqWUgc3VyIGxlIGPDtHTDqSBkZSBsYSBiYW5xdWUuIn0seyJpZCI6Im1hcmNvIiwiaGlkZGVuIjp0cnVlLCJjb2RlIjoiTUFSQ08iLCJ0IjoiUGFybGVyIMOgIE1hcmNvIiwicCI6IkwnYWdlbnQgZCdlbnRyZXRpZW4sIGF1IGZvbmQgZHUgQ2Fmw6kgZGUgbGEgQm91cnNlLiIsInNraWxsIjoiQmFyYXRpbiIsImRkIjoxMCwic2VjIjoxMjAsIm9rIjoiTWFyY28gYWNjZXB0ZSBkJ2FpZGVyIGNvbnRyZSB1bmUgcGFydCBkdSBidXRpbi4gSWwgdGUgZG9ubmUgc29uIGJhZGdlIGRlIHNlcnZpY2UgZXQgdW4gY29uc2VpbCA6IMKrIMOAIDAwaDMwLCBjJ2VzdCBsYSByZWzDqHZlLiBMZSBQQyBzw6ljdXJpdMOpIHJlc3RlIHZpZGUgY2lucSBtaW51dGVzLiDCuyIsImdpZnQiOiJCYWRnZSBkZSBzZXJ2aWNlIGRlIE1hcmNvIChvdXZyZSBsZXMgcG9ydGVzIMOgIGJhZGdlIHNpbXBsZXMpIiwibWoiOiJNYXJjbyBkZXZpZW50IHZvdHJlIGNvbXBsaWNlLiIsImtvIjoiTWFyY28gaGF1c3NlIGxlcyDDqXBhdWxlcyA6IMKrIEondmV1eCBwYXMgZCdlbm51aXMuIMK7IElsIGZpbml0IHNhIGJpw6hyZSBldCBzJ2VuIHZhLiJ9LHsiaWQiOiJkdXZhbCIsImhpZGRlbiI6dHJ1ZSwiY29kZSI6IkRVVkFMIiwidCI6IkxlIHRyYWl0ZXVyIE1haXNvbiBEdXZhbCIsInAiOiJMZXVyIGNhbWlvbiBzZSBnYXJlIGRhbnMgbGEgcnVlbGxlIMOgIDIxaC4iLCJza2lsbCI6IkJhcmF0aW4iLCJkZCI6MTIsInNlYyI6MTIwLCJvayI6IkxlIGNoZWYgZXN0IGTDqWJvcmTDqSA6IGlsIHZvdXMgZW1iYXVjaGUgY29tbWUgZXh0cmFzLiBEZXV4IHRlbnVlcyBkZSBzZXJ2ZXVyLCBldCBsJ2VudHLDqWUgcGFyIGxhIHBvcnRlIGRlIHNlcnZpY2Ugw6AgMjFoLiIsImdpZnQiOiJUZW51ZSBkZSBzZXJ2ZXVyIChlbnRyw6llIHBhciBsYSBwb3J0ZSBkZSBzZXJ2aWNlLCBvbiBjaXJjdWxlIGF1IGdhbGEpIiwia28iOiLCqyBPbiBhIGTDqWrDoCB0b3V0IGxlIG1vbmRlLCBtZXJjaS4gwrsgTGEgcG9ydGUgZHUgY2FtaW9uIHNlIHJlZmVybWUuIn0seyJpZCI6Imludml0IiwiaGlkZGVuIjp0cnVlLCJjb2RlIjoiTEFDUk9JWCIsInQiOiJGYWJyaXF1ZXIgZGVzIGludml0YXRpb25zIiwicCI6IkF2ZWMgbGEgbGlzdGUgZCdpbnZpdMOpcyB0cm91dsOpZSBkYW5zIGxlcyBwb3ViZWxsZXMuIiwic2tpbGwiOiJUZWNobmlxdWUiLCJkZCI6MTIsInNlYyI6MTgwLCJvayI6Ik0uIGV0IE1tZSBMYWNyb2l4IHNvbnQgc3VyIGxhIGxpc3RlIG1haXMgZW4gdm95YWdlLiBUdSBpbXByaW1lcyBkZXV4IGludml0YXRpb25zIHBhcmZhaXRlcyDDoCBsZXVyIG5vbS4iLCJnaWZ0IjoiSW52aXRhdGlvbiBhdSBnYWxhIGF1IG5vbSBkZXMgTGFjcm9peCIsImtvIjoiTCdpbXByaW1hbnRlIGJhdmUgZXQgbGUgcGFwaWVyIG4nZXN0IHBhcyBsZSBib24uIFBlcnNvbm5lIG4neSBjcm9pcmEuIn0seyJpZCI6ImNlcmNsZSIsImhpZGRlbiI6dHJ1ZSwiY29kZSI6IlNBSU5UUk9DSCIsInQiOiJMZSBDZXJjbGUgU2FpbnQtUm9jaCIsInAiOiJVbiB0cmlwb3QgY2xhbmRlc3RpbiwgYXUgc291cy1zb2wgZCd1biByZXN0YXVyYW50LiIsInNraWxsIjoiQmFyYXRpbiIsImRkIjoxNCwic2VjIjoxODAsIm9rIjoiUGF1bCBGZXJyYW5kIGRvaXQgNjAgMDAwIOKCrCBhdSBjZXJjbGUuIElsIGEgc2lnbsOpIGRlcyByZWNvbm5haXNzYW5jZXMgZGUgZGV0dGVzIGV0IGVuIGdhcmRlIGRlcyBjb3BpZXMgZGFucyBsZSB0aXJvaXIgZGUgc29uIGJ1cmVhdSwgw6AgbGEgYmFucXVlLiBMZSBwYXRyb24gcmljYW5lIDogwqsgSWwgZGl0IHF1J2lsIGNvbm5hw650IGxhIG1vaXRpw6kgZHUgY29kZSBkJ3VuIGNvZmZyZS4gSWwgZmVyYWl0IG4naW1wb3J0ZSBxdW9pIHBvdXIgcydlbiBzb3J0aXIuIMK7IiwibWoiOiJWb3VzIHNhdmV6IGNvbW1lbnQgZmFpcmUgcGFybGVyIFBhdWwgRmVycmFuZC4iLCJrbyI6IkxlIHZpZGV1ciB0ZSBtZXQgZGVob3JzIGF2YW50IHF1ZSB0dSBhaWVzIHBvc8OpIHVuZSBxdWVzdGlvbi4ifSx7ImlkIjoicGxhbm5pbmciLCJoaWRkZW4iOnRydWUsImNvZGUiOiJLRVNTTEVSIiwidCI6IkxlIGRvc3NpZXIgwqsgUkggc8OpY3VyaXTDqSDCuyIsInAiOiJEYW5zIGxlIHNlcnZldXIgZGVzIGNhbcOpcmFzLiIsInNraWxsIjoiVGVjaG5pcXVlIiwiZGQiOjE0LCJzZWMiOjE4MCwib2siOiJMZSBwbGFubmluZyBkZXMgZ2FyZGVzIDogbGEgY2hlZmZlLCBCcmlnaXR0ZSBLZXNzbGVyLCBmYWl0IHVuZSByb25kZSBjb21wbMOodGUgw6AgMmgwMCwgZHUgdG9pdCBhdSBzb3VzLXNvbC4gTm90ZSBlbiByb3VnZSA6IMKrIEtlc3NsZXIgbmUgc2UgbGFpc3NlIGphbWFpcyBiYXJhdGluZXIuIMK7IEV0IGxlIHNhcyBkZXZhbnQgbGEgY2hhbWJyZSBmb3J0ZSBlc3QgcHJvdMOpZ8OpIHBhciBkZXMgbGFzZXJzLiIsIm1qIjoiUsOpdsOobGUgbGVzIGxhc2VycyBzdXIgbCfDqWNyYW4uIiwia28iOiJMZSBkb3NzaWVyIGVzdCBjaGlmZnLDqS4gVHUgbGlzIHNldWxlbWVudCB1biBub20gOiDCqyBCLiBLZXNzbGVyLCBjaGVmZmUgZGUgbGEgc8OpY3VyaXTDqSDCuy4ifSx7ImlkIjoidm9pdHVyZSIsImhpZGRlbiI6dHJ1ZSwiY29kZSI6IklNUEVSIiwidCI6IkxhIHZvaXR1cmUgZHUgTm90YWlyZSIsInAiOiJMYSBiZXJsaW5lIG5vaXJlIGdhcsOpZSBkZXZhbnQgbGUgY29tbWlzc2FyaWF0LiIsInNraWxsIjoiVGVjaG5pcXVlIiwiZGQiOjE1LCJzZWMiOjEyMCwib2siOiJEYW5zIGxhIGJvw650ZSDDoCBnYW50cyA6IHVuZSBjb252b2NhdGlvbiBkZSBwb2xpY2UgcG91ciAzaDAwIGR1IG1hdGluLCDCqyBPcMOpcmF0aW9uIFZhbG1vbnQgwrssIGF2ZWMgdW5lIHBob3RvIGRlIGNoYWN1biBkZSB2b3VzLiBMZSBOb3RhaXJlIGNvbXB0ZSB2b3VzIGxpdnJlciDDoCBsYSBwb2xpY2UuIiwibWoiOiJWb3VzIGNvbm5haXNzZXogbGEgdHJhaGlzb24gZHUgTm90YWlyZS4iLCJrbyI6IkwnYWxhcm1lIGRlIGxhIHZvaXR1cmUgc2UgbWV0IMOgIGh1cmxlci4gVHUgZmlsZXMgc2FucyByaWVuIHZvaXIuIn1d";
@@ -515,10 +560,50 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   // un carnet par joueur dans le même navigateur : #joueur1, #joueur2… (salle d'entraînement)
   const slot = (location.hash.match(/joueur(\d)/) || [])[1];
   const KEY = 'valmont-carnet' + (slot ? '-' + slot : '');
-  const blank = () => ({ step: 'perso', name: '', role: -1, hp: 0, en: 0, gear: [], used: {}, prep: { minutes: 15, start: 0, end: 0, cur: null, done: {}, open: [], penalty: 0, order: [] }, boost: false, last: null });
+  const blank = () => ({ pid: 'p' + Math.random().toString(36).slice(2, 10), vts: 0, step: 'perso', name: '', role: -1, hp: 0, en: 0, gear: [], used: {}, prep: { minutes: 15, start: 0, end: 0, cur: null, done: {}, open: [], penalty: 0, order: [] }, boost: false, last: null });
   let S = blank();
   try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(blank(), JSON.parse(raw)); S.prep = Object.assign(blank().prep, S.prep || {}); } catch (e) {}
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+  if (!S.pid) S.pid = 'p' + Math.random().toString(36).slice(2, 10);
+  let lastHp = S.hp, lastEn = S.en, pushT = null;
+  const save = () => {
+    if (S.hp !== lastHp || S.en !== lastEn) { S.vts = Date.now(); lastHp = S.hp; lastEn = S.en; }
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+    clearTimeout(pushT); pushT = setTimeout(push, 600);
+  };
+
+  /* ---------- lien avec le MJ : même navigateur (salle d'entraînement) ou relais en ligne ---------- */
+  const embedded = window.parent !== window;
+  let room = '', relay = null, rstatus = '';
+  try {
+    const m = location.hash.match(/salon-([A-Za-z0-9]{4,10})/);
+    if (m) { room = m[1].toUpperCase(); localStorage.setItem('valmont-salon', room); }
+    else if (!embedded) room = localStorage.getItem('valmont-salon') || '';
+  } catch (e) {}
+  let bc = null; try { bc = new BroadcastChannel('valmont-roster'); bc.onmessage = (e) => onMJ(e.data); } catch (e) {}
+  const card = () => ({ k: 'p', id: S.pid, name: S.name, role: S.role >= 0 ? ROLES[S.role].name : '', hp: S.hp, en: S.en, gear: S.gear.concat(gifts()).slice(0, 12), ts: S.vts || 0 });
+  function push() {
+    if (!S.name || S.role < 0) return;
+    const c = card();
+    try { const r = JSON.parse(localStorage.getItem('valmont-roster') || '{}'); r[S.pid] = c; localStorage.setItem('valmont-roster', JSON.stringify(r)); } catch (e) {}
+    try { bc && bc.postMessage(c); } catch (e) {}
+    if (relay) relay.send(c).then((ok) => { rstatus = ok ? 'sent' : 'off'; showRelay(); });
+  }
+  function onMJ(d) {
+    if (!d || d.k !== 'm' || d.pid !== S.pid || (d.ts || 0) <= (S.vts || 0)) return;
+    S.hp = d.hp; S.en = d.en; lastHp = S.hp; lastEn = S.en; S.vts = d.ts;
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+    if (S.step === 'fiche') render();
+  }
+  function startRelay() {
+    if (relay) { relay.close(); relay = null; }
+    if (!room || embedded || !window.ValmontRelay) return;
+    relay = ValmontRelay.open(room, onMJ, (st) => { rstatus = st === 'on' && rstatus === 'sent' ? 'sent' : st; showRelay(); });
+    push();
+  }
+  function showRelay() {
+    const el = document.getElementById('relayState'); if (!el) return;
+    el.textContent = !room ? '' : rstatus === 'sent' ? 'Relié au MJ ✓' : rstatus === 'on' ? 'Connecté au salon ' + room : rstatus === 'off' ? 'Relais indisponible : dis ton perso au MJ' : 'Connexion au salon ' + room + '…';
+  }
   const role = () => ROLES[S.role];
   const spent = () => S.gear.reduce((t, n) => t + ((GEAR.find((g) => g[0] === n) || [0, 0])[1]), 0);
   const gifts = () => S.prep.order.map((id) => S.prep.done[id]).filter((r) => r && r.ok && r.gift).map((r) => r.gift);
@@ -541,6 +626,8 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
       <div class="card"><h2>Ton braqueur</h2>
         <label class="muted" for="name">Nom de code</label>
         <input type="text" id="name" maxlength="18" placeholder="Ex. : Le Chat" value="${esc(S.name)}" autocomplete="off"></div>
+      ${embedded ? '' : `<div class="card"><label class="muted" for="room">Code du salon (affiché sur la télé)</label>
+        <input type="text" id="room" maxlength="10" placeholder="Ex. : K7M2QX" value="${esc(room)}" autocomplete="off" autocapitalize="characters"><p class="muted" id="relayState" style="font-size:.85rem"></p></div>`}
       <p class="muted">Choisis un rôle. Mettez-vous d'accord avec ton équipe pour ne pas prendre le même.</p>
       <div class="roles">${ROLES.map((r, i) => `
         <button class="role ${S.role === i ? 'on' : ''}" data-role="${i}" aria-pressed="${S.role === i}">
@@ -551,6 +638,9 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
         </button>`).join('')}</div>
       <button class="btn go full" data-next="matos" ${S.role < 0 || !S.name ? 'disabled' : ''}>Suivant : le matériel</button>
     </div>`;
+    const rm = document.getElementById('room');
+    if (rm) rm.addEventListener('input', () => { room = rm.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10); try { localStorage.setItem('valmont-salon', room); } catch (e) {} rstatus = ''; if (room.length >= 4) startRelay(); else { if (relay) relay.close(); relay = null; } showRelay(); });
+    showRelay();
     const nm = document.getElementById('name');
     nm.addEventListener('input', () => { S.name = nm.value.trim().slice(0, 18); save(); document.querySelector('[data-next]').disabled = S.role < 0 || !S.name; document.getElementById('who').textContent = S.name; });
   }
@@ -699,7 +789,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
       ValmontDice.overlay({ d: dv, title: S.name + ' · ' + SKILLS[j], mods: [{ label: SKILLS[j], v: r.s[j] }, { label: 'effort', v: boost ? 3 : 0 }] });
       return;
     }
-    if (b.id === 'resetAll') { if (!confirmReset) { confirmReset = true; return render(); } confirmReset = false; S = blank(); save(); return render(); }
+    if (b.id === 'resetAll') { if (!confirmReset) { confirmReset = true; return render(); } confirmReset = false; try { const r = JSON.parse(localStorage.getItem('valmont-roster') || '{}'); delete r[S.pid]; localStorage.setItem('valmont-roster', JSON.stringify(r)); } catch (e) {} S = blank(); lastHp = S.hp; lastEn = S.en; save(); return render(); }
   });
   document.addEventListener('change', (e) => {
     if (e.target.id === 'boost') { S.boost = e.target.checked; save(); }
@@ -732,6 +822,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     } else if (P.end - now <= 0 && !document.querySelector('[data-next="fiche"]') && !S.last) render();
   }, 500);
 
+  startRelay(); push();
   if (!LEADS.length) { $view.innerHTML = '<div class="card">Le carnet n\'a pas pu se charger. Recharge la page.</div>'; }
   else render();
 })();
