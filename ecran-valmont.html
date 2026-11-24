@@ -96,6 +96,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 @keyframes pop { from { transform: translateY(20px) scale(.9); opacity: 0; } }
 .to-console { position: absolute; left: max(18px, env(safe-area-inset-left, 0px)); bottom: 4px; font: 500 .72rem var(--mono); color: var(--muted); background: none; border: 0; opacity: .5; padding: 4px; }
 .to-console:hover, .to-console:focus-visible { opacity: 1; }
+.to-sound { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font: 700 .8rem var(--mono); color: #1a1204; background: var(--amber); border: 0; padding: 6px 14px; z-index: 7; }
 .syncnote { position: absolute; right: max(18px, env(safe-area-inset-right, 0px)); bottom: 4px; font: 500 .72rem var(--mono); color: var(--muted); }
 @media (max-width: 900px) {
   html, body { height: auto; }
@@ -187,6 +188,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   </div>
   <div class="banner" id="banner" hidden><div id="bannerText"></div></div>
   <div class="rollfx" id="rollfx" hidden></div>
+  <button class="to-sound" id="soundBtn" type="button">Activer le son</button>
   <a class="to-console" href="#mj">Console MJ</a>
   <span class="syncnote" id="syncnote"></span>
 </div>
@@ -252,6 +254,15 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <form class="row" id="logForm" autocomplete="off"><input id="logText" maxlength="110" placeholder="Ex. : Noa assomme le garde du quai" aria-label="Nouvelle entrée du journal"><button class="b go" type="submit">Noter</button></form>
     <div class="btns" id="quickLog"></div>
     <div class="logitems" id="cLog"></div>
+  </div>
+
+  <div class="card"><h3><span>Sons d'ambiance</span><span id="cSndNow"></span></h3>
+    <p class="hint">Les sons sortent de l'ordi de la télé. Une seule fois, touche « Activer le son » sur l'écran de la télé.</p>
+    <div class="btns" id="cAmb"></div>
+    <div class="btns" id="cFx"></div>
+    <label class="hint" for="cVol" style="display:grid;gap:4px">Volume<input id="cVol" type="range" min="0" max="1" step="0.05" aria-label="Volume des sons"></label>
+    <div class="btns"><button class="b sm" id="cAuto" type="button"></button></div>
+    <p class="hint">Sons automatiques : le dé qui roule, et l'alarme quand l'alerte atteint 7.</p>
   </div>
 
   <div class="card"><h3>Annonce plein écran</h3>
@@ -860,6 +871,127 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
 </script>
 <script>
+/* Sons d'ambiance d'Opération Valmont, fabriqués par le navigateur (aucun fichier à charger).
+   ValmontSound.unlock()   : à appeler après un clic (les navigateurs interdisent le son avant)
+   ValmontSound.play(id)   : un effet · ValmontSound.ambience(id) : une ambiance en boucle ('' = silence)
+   ValmontSound.setVolume(0..1) */
+(function () {
+  let ctx = null, master = null, vol = 0.7, amb = null, ambId = '';
+  const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+
+  function unlock() {
+    if (!AC) return false;
+    if (!ctx) { ctx = new AC(); master = ctx.createGain(); master.gain.value = vol; master.connect(ctx.destination); }
+    if (ctx.state === 'suspended') ctx.resume();
+    return true;
+  }
+  const on = () => !!ctx && ctx.state === 'running';
+  const T = () => ctx.currentTime;
+
+  let nbuf = null;
+  function noiseBuffer() {
+    if (nbuf) return nbuf;
+    nbuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = nbuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return nbuf;
+  }
+  function env(g, t0, dur, peak, attack = 0.01) {
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  }
+  function tone(type, f, t0, dur, peak = 0.25, f2, out) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t0);
+    if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
+    env(g, t0, dur, peak);
+    o.connect(g); g.connect(out || master);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function noise(t0, dur, peak, ftype, freq, q = 1, out) {
+    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = noiseBuffer(); s.loop = true;
+    f.type = ftype; f.frequency.value = freq; f.Q.value = q;
+    env(g, t0, dur, peak, Math.min(0.02, dur / 3));
+    s.connect(f); f.connect(g); g.connect(out || master);
+    s.start(t0, Math.random()); s.stop(t0 + dur + 0.05);
+  }
+
+  /* ----- effets ----- */
+  const FX = {
+    alarm() { const t = T(), o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; g.gain.value = 0.13; o.connect(g); g.connect(master);
+      for (let i = 0; i < 12; i++) o.frequency.setValueAtTime(i % 2 ? 660 : 920, t + i * 0.3);
+      g.gain.setValueAtTime(0.13, t + 3.4); g.gain.linearRampToValueAtTime(0.0001, t + 3.7); o.start(t); o.stop(t + 3.7); },
+    siren() { const t = T(), o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(); o.type = 'sawtooth'; f.type = 'lowpass'; f.frequency.value = 2200; g.gain.value = 0.14;
+      o.connect(f); f.connect(g); g.connect(master);
+      for (let i = 0; i < 5; i++) { o.frequency.setValueAtTime(650, t + i * 1.4); o.frequency.linearRampToValueAtTime(1050, t + i * 1.4 + 0.7); o.frequency.linearRampToValueAtTime(650, t + i * 1.4 + 1.4); }
+      g.gain.setValueAtTime(0.14, t + 6.4); g.gain.linearRampToValueAtTime(0.0001, t + 7); o.start(t); o.stop(t + 7); },
+    beep() { const t = T(); tone('sine', 1320, t, 0.12, 0.25); tone('sine', 1760, t + 0.14, 0.2, 0.25); },
+    refus() { const t = T(); tone('square', 200, t, 0.18, 0.18); tone('square', 160, t + 0.22, 0.3, 0.18); },
+    steps() { const t = T(); for (let i = 0; i < 7; i++) { noise(t + i * 0.44 + (i % 2) * 0.03, 0.1, 0.5, 'lowpass', 260 + (i % 2) * 60, 1); tone('sine', 85, t + i * 0.44, 0.1, 0.25); } },
+    blackout() { const t = T(); tone('sawtooth', 320, t, 1, 0.25, 38); noise(t, 0.4, 0.4, 'lowpass', 140, 1); tone('sine', 50, t + 0.05, 0.9, 0.5); noise(t + 1.1, 1.4, 0.05, 'bandpass', 120, 8); },
+    vault() { const t = T(); tone('sine', 62, t, 0.9, 0.6, 34); noise(t + 0.05, 0.18, 0.4, 'bandpass', 3200, 8); noise(t + 0.4, 1.3, 0.14, 'highpass', 5500, 0.7); tone('sine', 55, t + 1, 0.7, 0.5, 30); noise(t + 1.02, 0.15, 0.3, 'bandpass', 2200, 6); },
+    gong() { const t = T(); [1, 2.76, 5.4, 8.93].forEach((m, i) => tone('sine', 170 * m, t, 3.6 - i * 0.5, 0.28 / (i + 1))); noise(t, 0.12, 0.2, 'bandpass', 900, 2); },
+    success() { const t = T(); [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, t + i * 0.1, 0.45, 0.22)); },
+    fail() { const t = T(); [392, 330, 262].forEach((f, i) => tone('sawtooth', f, t + i * 0.2, 0.4, 0.12)); },
+    talkie() { const t = T(); noise(t, 0.12, 0.25, 'bandpass', 1700, 2); tone('sine', 1000, t + 0.14, 0.08, 0.15); noise(t + 0.35, 0.5, 0.18, 'bandpass', 1500, 2); noise(t + 0.95, 0.1, 0.25, 'bandpass', 1700, 2); },
+    coeur() { const t = T(); for (let i = 0; i < 4; i++) { tone('sine', 70, t + i * 0.95, 0.18, 0.7, 40); tone('sine', 60, t + i * 0.95 + 0.22, 0.2, 0.5, 36); } },
+    ping() { const t = T(); tone('sine', 880, t, 0.35, 0.22); tone('sine', 1320, t + 0.02, 0.3, 0.1); },
+    dice() { const t = T(); let x = 0, gap = 0.13; for (let i = 0; i < 14; i++) { noise(t + x, 0.05, 0.22, 'bandpass', 1500 + Math.random() * 1500, 3); tone('triangle', 500 + Math.random() * 300, t + x, 0.04, 0.05); x += gap; gap = Math.max(0.05, gap * 0.9); }
+      tone('sine', 120, t + 1.15, 0.2, 0.45, 70); },
+  };
+  const NAMES = { alarm: 'Alarme', siren: 'Sirène de police', beep: 'Badge accepté', refus: 'Badge refusé', steps: 'Pas dans l\'escalier', blackout: 'Coupure de courant', vault: 'Chambre forte', gong: 'Cloche de 6h00', success: 'Réussite', fail: 'Échec', talkie: 'Talkie des gardes', coeur: 'Battements de cœur', ping: 'Repère', dice: 'Dé qui roule' };
+
+  /* ----- ambiances (en boucle) ----- */
+  function startAmbience(id) {
+    const g = ctx.createGain(); g.gain.value = 0.0001; g.connect(master);
+    g.gain.exponentialRampToValueAtTime(1, T() + 1.2);
+    const nodes = [], timers = [];
+    const src = (type, f, peak, dest) => { const o = ctx.createOscillator(), og = ctx.createGain(); o.type = type; o.frequency.value = f; og.gain.value = peak; o.connect(og); og.connect(dest || g); o.start(); nodes.push(o); return { o, og }; };
+    const hiss = (ftype, freq, peak, q = 1) => { const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), sg = ctx.createGain(); s.buffer = noiseBuffer(); s.loop = true; f.type = ftype; f.frequency.value = freq; f.Q.value = q; sg.gain.value = peak; s.connect(f); f.connect(sg); sg.connect(g); s.start(); nodes.push(s); return f; };
+    if (id === 'gala') {
+      const CH = [[110, 220, 261.6, 329.6, 392], [146.8, 220, 261.6, 349.2, 440], [98, 196, 246.9, 293.7, 349.2], [130.8, 196, 261.6, 329.6, 392]];
+      let i = 0;
+      const chord = () => {
+        const t = T(), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 950; lp.connect(g);
+        CH[i++ % CH.length].forEach((f, k) => { const o = ctx.createOscillator(), og = ctx.createGain(); o.type = k ? 'triangle' : 'sine'; o.frequency.value = f * (1 + (Math.random() - 0.5) * 0.004);
+          og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.07, t + 1.2); og.gain.exponentialRampToValueAtTime(0.0001, t + 5.2); o.connect(og); og.connect(lp); o.start(t); o.stop(t + 5.3); });
+      };
+      chord(); timers.push(setInterval(chord, 4000));
+      hiss('bandpass', 650, 0.035, 0.6);
+    } else if (id === 'tension') {
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 200; f.connect(g);
+      src('sawtooth', 55, 0.1, f); src('sawtooth', 55.8, 0.1, f); src('sine', 41, 0.18, g);
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.12; lg.gain.value = 90; lfo.connect(lg); lg.connect(f.frequency); lfo.start(); nodes.push(lfo);
+      hiss('highpass', 6000, 0.008);
+      const beat = () => { const t = T(); tone('sine', 66, t, 0.16, 0.35, 40, g); tone('sine', 58, t + 0.2, 0.18, 0.25, 36, g); };
+      beat(); timers.push(setInterval(beat, 1100));
+    } else {
+      const { og } = src('sine', 82.4, 0.09); src('sine', 123.5, 0.04); src('sine', 61.7, 0.07);
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.18; lg.gain.value = 0.04; lfo.connect(lg); lg.connect(og.gain); lfo.start(); nodes.push(lfo);
+      const w = hiss('lowpass', 320, 0.05);
+      const wl = ctx.createOscillator(), wg = ctx.createGain(); wl.frequency.value = 0.07; wg.gain.value = 140; wl.connect(wg); wg.connect(w.frequency); wl.start(); nodes.push(wl);
+    }
+    return { id, g, stop() { const t = T(); g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7); timers.forEach(clearInterval); setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch (e) {} }), 900); } };
+  }
+  function ambience(id) {
+    id = id || '';
+    if (!on()) { ambId = id; return false; }
+    if (id === (amb ? amb.id : '')) return true;
+    if (amb) { amb.stop(); amb = null; }
+    ambId = id;
+    if (id) amb = startAmbience(id);
+    return true;
+  }
+  function setVolume(v) { vol = Math.max(0, Math.min(1, +v || 0)); if (master) master.gain.setTargetAtTime(vol, ctx.currentTime, 0.05); }
+  function play(id) { if (!on() || !FX[id]) return false; FX[id](); return true; }
+
+  window.ValmontSound = { unlock, play, ambience, setVolume, isOn: on, names: NAMES, pending: () => ambId };
+})();
+
+</script>
+<script>
 /* Portraits des 6 rôles — visages à facettes, éclairage dur, liseré de couleur.
    API : ValmontPortraits.svg(nomDuRôle) → chaîne SVG (viewBox 200×200). */
 (function () {
@@ -1112,7 +1244,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
   function fresh() {
     return { floor: 'rdc', t: 30, alert: 0, show: { cams: false, guards: false, lasers: false, labels: true }, team: [], loot: 0, log: [], banner: { on: false, text: '' }, roll: null, prepEnd: 0,
-      fog: true, vis: {}, seen: {}, gpos: {}, ping: null };
+      fog: true, vis: {}, seen: {}, gpos: {}, ping: null, snd: null, amb: '', vol: 0.7, auto: true };
   }
   function norm(d) {
     const s = Object.assign(fresh(), d || {});
@@ -1234,12 +1366,25 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   }
   setInterval(tickPrep, 500);
 
-  let lastRollAt = null, rollHide = null, pingTimer = null;
+  let lastRollAt = null, rollHide = null, pingTimer = null, lastSnd = null, lastAlert = null, lastPing = null;
+  function handleSound(s) {
+    const btn = $('soundBtn');
+    btn.hidden = ValmontSound.isOn();
+    if (!ValmontSound.isOn()) { lastSnd = s.snd ? s.snd.at : 0; lastAlert = s.alert; lastPing = s.ping ? s.ping.at : 0; return; }
+    ValmontSound.setVolume(s.vol);
+    ValmontSound.ambience(s.amb);
+    if (s.snd && s.snd.at !== lastSnd) { if (lastSnd !== null) ValmontSound.play(s.snd.id); lastSnd = s.snd.at; }
+    if (s.auto && lastAlert !== null && lastAlert < 7 && s.alert >= 7) ValmontSound.play('alarm');
+    if (s.auto && s.ping && s.ping.at !== lastPing && lastPing !== null) ValmontSound.play('ping');
+    lastAlert = s.alert; lastPing = s.ping ? s.ping.at : 0;
+  }
+  document.getElementById('soundBtn').addEventListener('click', () => { ValmontSound.unlock(); setTimeout(() => { ValmontSound.play('ping'); render(); }, 80); });
   function renderScreen() {
     const s = state, fl = P.floors.find((f) => f.key === s.floor);
     $('lift').innerHTML = P.floors.slice().reverse().map((f) => `<i class="${f.key === s.floor ? 'on' : ''}">${f.key === 'toit' ? 'Toit' : f.key === 'etage' ? '1' : f.key === 'rdc' ? '0' : '−1'}</i>`).join('');
     $('clock').textContent = hhmm(s.t);
     tickPrep();
+    handleSound(s);
     const left = 540 - s.t;
     const cd = $('countdown');
     cd.textContent = left > 0 ? `fourgon dans ${Math.floor(left / 60)} h ${String(left % 60).padStart(2, '0')}` : 'le fourgon est là';
@@ -1272,6 +1417,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (s.roll && s.roll.at !== lastRollAt) {
       if (lastRollAt !== null) {
         const r = s.roll;
+        if (s.auto) ValmontSound.play('dice');
         ValmontDice.create($('rollfx'), { d: r.d, title: r.who + ' · ' + r.skill, mods: [{ label: r.skill, v: r.mod }], dd: r.dd, help: false, size: 'big' });
         $('rollfx').hidden = false;
         clearTimeout(rollHide); rollHide = setTimeout(() => { $('rollfx').hidden = true; }, 11000);
@@ -1311,6 +1457,11 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     who.value = s.team.some((m) => m.id === prev) ? prev : '';
     $('quickLog').innerHTML = QUICK_LOG.map((q) => `<button class="b sm" data-quick="${esc(q)}">${esc(q)}</button>`).join('');
     $('cLog').innerHTML = s.log.map((l, i) => `<div><b>${hhmm(l.t)}</b><span>${esc(l.text)}</span><button data-dellog="${i}" aria-label="Effacer cette entrée">×</button></div>`).join('');
+    $('cAmb').innerHTML = [['gala', 'Gala'], ['tension', 'Tension'], ['nuit', 'Nuit'], ['', 'Silence']].map(([k, l]) => `<button class="b ${s.amb === k ? 'on' : ''}" data-amb="${k}" aria-pressed="${s.amb === k}">${l}</button>`).join('');
+    $('cFx').innerHTML = Object.entries(ValmontSound.names).map(([k, l]) => `<button class="b sm" data-snd="${k}">${esc(l)}</button>`).join('');
+    $('cSndNow').textContent = s.amb ? 'ambiance : ' + ({ gala: 'gala', tension: 'tension', nuit: 'nuit' }[s.amb]) : '';
+    if (document.activeElement !== $('cVol')) $('cVol').value = s.vol;
+    $('cAuto').className = 'b sm ' + (s.auto ? 'on' : ''); $('cAuto').textContent = 'Sons automatiques : ' + (s.auto ? 'oui' : 'non');
     $('quickBanner').innerHTML = QUICK_BANNER.map((q) => `<button class="b sm ${s.banner.on && s.banner.text === q ? 'on' : ''}" data-banner="${esc(q)}">${esc(q)}</button>`).join('');
     $('bannerOff').disabled = !s.banner.on;
     $('resetBtn').textContent = confirmReset ? 'Toucher encore pour confirmer' : 'Nouvelle partie';
@@ -1423,6 +1574,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const d = b.dataset;
     if (d.del == null && confirmDel) { confirmDel = null; }
     if (b.id !== 'resetBtn') confirmReset = false;
+    if (d.snd) return commit((s) => { s.snd = { id: d.snd, at: Date.now() }; });
+    if (d.amb != null && b.hasAttribute('data-amb')) return commit((s) => { s.amb = d.amb; });
+    if (b.id === 'cAuto') return commit((s) => { s.auto = !s.auto; });
     if (d.bmode) { bmode = d.bmode; return render(); }
     if (d.pick) { selected = selected === d.pick ? null : d.pick; return render(); }
     if (d.zoom) { zoom = !zoom; return render(); }
@@ -1458,6 +1612,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     } else render();
   });
   document.getElementById('consoleView').addEventListener('change', (e) => {
+    if (e.target.id === 'cVol') { const v = +e.target.value; commit((s) => { s.vol = v; }); return; }
     const sel = e.target.closest('[data-where]');
     if (sel) {
       const [f, r] = sel.value ? sel.value.split('|') : ['', ''];
