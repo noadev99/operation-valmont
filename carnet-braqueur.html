@@ -550,6 +550,10 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   ];
   /* outils qui donnent un bonus à une compétence : [compétence, bonus] */
   const TOOLB = { 'Crochets de serrurier': ['Technique', 2], 'Gants et combinaison noire': ['Discrétion', 1], 'Lampe UV': ['Technique', 3], 'Lunettes thermiques': ['Discrétion', 3], 'Costume de gala + invitation': ['Baratin', 2], 'Uniforme de garde': ['Baratin', 3], 'Ordinateur de piratage': ['Technique', 3] };
+  /* objets à usage limité : nombre de charges, et compétence où on les utilise (sans bonus chiffré) */
+  const CHG = { 'Fumigènes ×2': 2, 'Boissons énergisantes ×2': 2, 'Kit médical ×2': 2, 'Colliers de serrage ×5': 5, 'Brouilleur de caméras': 3, 'Taser': 3, 'Charge de brèche': 1 };
+  const CHGSK = { 'Fumigènes ×2': 'Discrétion', 'Brouilleur de caméras': 'Technique', 'Taser': 'Discrétion', 'Charge de brèche': 'Technique' };
+  const left = (n) => (CHG[n] || 0) - ((S.uses && S.uses[n]) || 0);
   const BUDGET = 4;
   const pic = (name) => (window.ValmontPortraits ? ValmontPortraits.svg(name) : '');
   const DIFF = (dd) => dd <= 8 ? 'facile' : dd <= 10 ? 'assez facile' : dd <= 12 ? 'moyen' : dd <= 14 ? 'difficile' : 'très difficile';
@@ -562,7 +566,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   // un carnet par joueur dans le même navigateur : #joueur1, #joueur2… (salle d'entraînement)
   const slot = (location.hash.match(/joueur(\d)/) || [])[1];
   const KEY = 'valmont-carnet' + (slot ? '-' + slot : '');
-  const blank = () => ({ pid: 'p' + Math.random().toString(36).slice(2, 10), vts: 0, step: 'perso', name: '', role: -1, hp: 0, en: 0, gear: [], used: {}, prep: { tokens: 5, minutes: 15, start: 0, end: 0, cur: null, done: {}, open: [], penalty: 0, order: [] }, boost: false, last: null });
+  const blank = () => ({ pid: 'p' + Math.random().toString(36).slice(2, 10), vts: 0, step: 'perso', name: '', role: -1, hp: 0, en: 0, gear: [], used: {}, uses: {}, prep: { tokens: 5, minutes: 15, start: 0, end: 0, cur: null, done: {}, open: [], penalty: 0, order: [] }, boost: false, last: null });
   let S = blank();
   try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(blank(), JSON.parse(raw)); S.prep = Object.assign(blank().prep, S.prep || {}); } catch (e) {}
   if (!S.pid) S.pid = 'p' + Math.random().toString(36).slice(2, 10);
@@ -587,7 +591,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   let known = []; try { known = JSON.parse(localStorage.getItem('valmont-known') || '[]'); } catch (e) {}
   const cards = {}; // persos du salon (pour reprendre le sien)
   // sauvegarde compacte du perso : suffit à le retrouver sur un autre téléphone
-  const snap = () => ({ tk: S.prep.tokens, g: S.gear, o: S.prep.open, pe: S.prep.penalty, or: S.prep.order, m: S.prep.minutes, s: S.prep.start, e: S.prep.end,
+  const snap = () => ({ us: S.uses, tk: S.prep.tokens, g: S.gear, o: S.prep.open, pe: S.prep.penalty, or: S.prep.order, m: S.prep.minutes, s: S.prep.start, e: S.prep.end,
     d: Object.fromEntries(Object.entries(S.prep.done).map(([k, v]) => [k, [v.ok ? 1 : 0, v.d, v.mod, v.boost ? 1 : 0, v.total, v.gift || '']])) });
   const card = () => ({ k: 'p', id: S.pid, name: S.name, role: S.role >= 0 ? ROLES[S.role].name : '', hp: S.hp, en: S.en, gear: S.gear.concat(gifts()).slice(0, 12), ts: S.vts || 0, sv: snap() });
   function restoreFrom(c) {
@@ -596,6 +600,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     const sv = c.sv || {};
     S = blank();
     S.pid = c.id; S.name = c.name; S.role = ri; S.hp = c.hp; S.en = c.en; S.vts = c.ts || 0; S.gear = sv.g || [];
+    S.uses = sv.us || {};
     S.prep = Object.assign(S.prep, { tokens: sv.tk != null ? sv.tk : 5, open: sv.o || [], penalty: sv.pe || 0, order: sv.or || [], minutes: sv.m || 15, start: sv.s || 0, end: sv.e || 0,
       done: Object.fromEntries(Object.entries(sv.d || {}).map(([k, a]) => [k, { ok: !!a[0], d: a[1], mod: a[2], boost: !!a[3], total: a[4], gift: a[5] || null }])) });
     lastHp = S.hp; lastEn = S.en; S.step = 'fiche';
@@ -660,6 +665,8 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     const boost = wantBoost && S.en > 0;
     if (boost) { S.en -= 1; save(); }
     tools = tools || [];
+    tools.forEach((n) => { if (CHG[n]) { S.uses = S.uses || {}; S.uses[n] = (S.uses[n] || 0) + 1; } });
+    save(); push();
     const tb = tools.reduce((a, n) => a + (TOOLB[n] ? TOOLB[n][1] : 0), 0);
     const dv = 1 + Math.floor(Math.random() * 20);
     render();
@@ -672,7 +679,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     const r = role(); if (!r) return; closeSheet();
     const el = document.createElement('div'); el.id = 'sheet';
     el.style.cssText = 'position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:flex;align-items:flex-end';
-    el.innerHTML = `<div style="width:100%;background:var(--bg);border-top:3px solid var(--amber,#e8a020);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:12px"><b style="font-size:1.1rem">Lancer le d20 : quelle compétence ?</b><label class="boost"><input type="checkbox" id="fboost2" ${S.en < 1 ? 'disabled' : ''}><span>Effort : <b>+3</b> pour 1 énergie (il t'en reste ${S.en})</span></label><div style="display:grid;gap:10px">${SKILLS.map((k, j) => { const ts = ownedTools().filter((n) => TOOLB[n][0] === k); return `<div class="skblk" style="display:grid;gap:4px"><button class="skill" data-roll2="${j}" style="width:100%"><small>${k}</small><b>+${r.s[j]}</b><span>Lancer</span></button>${ts.map((n) => `<label class="boost"><input type="checkbox" data-gb="${esc(n)}" ${S.used[n] ? 'disabled' : ''}><span>Utiliser : ${esc(n)} <b>+${TOOLB[n][1]}</b>${S.used[n] ? ' (cassé / utilisé)' : ''}</span></label>`).join('')}</div>`; }).join('')}</div><button class="btn" id="sheetClose" type="button">Annuler</button></div>`;
+    el.innerHTML = `<div style="width:100%;background:var(--bg);border-top:3px solid var(--amber,#e8a020);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:12px"><b style="font-size:1.1rem">Lancer le d20 : quelle compétence ?</b><label class="boost"><input type="checkbox" id="fboost2" ${S.en < 1 ? 'disabled' : ''}><span>Effort : <b>+3</b> pour 1 énergie (il t'en reste ${S.en})</span></label><div style="display:grid;gap:10px">${SKILLS.map((k, j) => { const ts = ownedTools().filter((n) => TOOLB[n][0] === k).concat(S.gear.concat(gifts()).filter((n) => CHGSK[n] === k)); return `<div class="skblk" style="display:grid;gap:4px"><button class="skill" data-roll2="${j}" style="width:100%"><small>${k}</small><b>+${r.s[j]}</b><span>Lancer</span></button>${ts.map((n) => { const ch = !!CHG[n], gone = ch ? left(n) <= 0 : !!S.used[n]; return `<label class="boost"><input type="checkbox" data-gb="${esc(n)}" ${gone ? 'disabled' : ''}><span>Utiliser : ${esc(n)} ${ch ? `<b>(reste ${Math.max(0, left(n))})</b>` : `<b>+${TOOLB[n][1]}</b>`}${gone ? ' (épuisé)' : ''}</span></label>`; }).join('')}</div>`; }).join('')}</div><button class="btn" id="sheetClose" type="button">Annuler</button></div>`;
     document.body.appendChild(el);
   }
   function ensureFab() {
@@ -822,8 +829,8 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
         <button class="btn go full" id="fab2" type="button">Lancer un dé</button></div>
       <div class="card"><b>${esc(r.ab)}</b><p class="muted" style="font-size:.9rem">${esc(r.abd)}</p></div>
       <div style="display:grid;gap:8px"><h2>Matériel</h2>
-        ${items.length ? `<div class="gearlist">${items.map(([n, d], i) => `<label class="${S.used[n] ? 'used' : ''}"><input type="checkbox" data-used="${esc(n)}" ${S.used[n] ? 'checked' : ''}><span>${esc(n)}<small>${esc(d)}</small></span></label>`).join('')}</div>` : '<p class="muted">Aucun matériel.</p>'}
-        <p class="muted" style="font-size:.85rem">Coche un objet quand il est utilisé ou cassé.</p></div>
+        ${items.length ? `<div class="gearlist">${items.map(([n, d], i) => CHG[n] ? `<div class="${left(n) <= 0 ? 'used' : ''}" style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0"><span>${esc(n)}<small style="display:block">${esc(d)}</small><b>Il en reste ${Math.max(0, left(n))}/${CHG[n]}</b></span><button class="btn" data-use="${esc(n)}" type="button" ${left(n) <= 0 ? 'disabled' : ''}>Utiliser</button></div>` : `<label class="${S.used[n] ? 'used' : ''}"><input type="checkbox" data-used="${esc(n)}" ${S.used[n] ? 'checked' : ''}><span>${esc(n)}<small>${esc(d)}</small></span></label>`).join('')}</div>` : '<p class="muted">Aucun matériel.</p>'}
+        <p class="muted" style="font-size:.85rem">Les objets à usage limité se décomptent tout seuls. Coche les autres quand ils sont cassés.</p></div>
       <div style="display:grid;gap:8px"><h2>Ce que je sais</h2>
         ${clues.filter(([, x]) => x.ok).map(([l]) => `<div class="clue"><b>${esc(l.t)}</b><p>${esc(l.ok)}</p></div>`).join('') || '<p class="muted">Aucune info trouvée pendant le repérage.</p>'}</div>
       <button class="danger" id="resetAll">${confirmReset ? 'Toucher encore pour tout effacer' : 'Effacer ce carnet (nouvelle partie)'}</button>
@@ -870,6 +877,14 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     if (d.pool) { const r = role(), k = d.pool; S[k] = Math.max(0, Math.min(r[k], S[k] + Number(d.d))); save(); return render(); }
     if (d.roll != null) { const fb = document.getElementById('fboost'); return doRoll(+d.roll, !!(fb && fb.checked)); }
     if (d.roll2 != null) { const fb = document.getElementById('fboost2'), blk = b.closest('.skblk'); const tools = blk ? [...blk.querySelectorAll('[data-gb]:checked')].map((x) => x.dataset.gb) : []; closeSheet(); return doRoll(+d.roll2, !!(fb && fb.checked), tools); }
+    if (d.use) {
+      const n = d.use; if (left(n) <= 0) return;
+      S.uses = S.uses || {}; S.uses[n] = (S.uses[n] || 0) + 1;
+      const r = role();
+      if (n.startsWith('Kit médical') && r) S.hp = Math.min(r.hp, S.hp + 4);
+      if (n.startsWith('Boissons') && r) S.en = Math.min(r.en, S.en + 2);
+      save(); push(); return render();
+    }
     if (b.id === 'fab' || b.id === 'fab2') return openSheet();
     if (b.id === 'sheetClose') return closeSheet();
     if (b.id === 'resetAll') { if (!confirmReset) { confirmReset = true; return render(); } confirmReset = false; try { const r = JSON.parse(localStorage.getItem('valmont-roster') || '{}'); delete r[S.pid]; localStorage.setItem('valmont-roster', JSON.stringify(r)); } catch (e) {} S = blank(); lastHp = S.hp; lastEn = S.en; save(); return render(); }
