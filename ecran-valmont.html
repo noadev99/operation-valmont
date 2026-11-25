@@ -739,7 +739,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   async function play(opts) {
     opts = opts || {}; css(); close();
     const id = ++alive, dead = () => id !== alive;
-    try { if (S()) { prevAmb = S().pending ? S().pending() : ''; S().ambience('pluie'); } } catch (e) {}
+    try { if (S()) { prevAmb = S().pending ? S().pending() : ''; S().ambience('film'); } } catch (e) {}
     root = document.createElement('div'); root.className = 'vi bars';
     root.innerHTML = `<canvas></canvas><div class="flash"></div><div class="stage"></div><div class="sub"></div><button class="skip" type="button">Passer ⏭</button>`;
     document.body.appendChild(root);
@@ -761,7 +761,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       sub.textContent = L.t; sub.classList.add('on');
       const a = await voices[i];
       let need = L.d * 1000;
-      if (a) { curAudio = a; try { a.currentTime = 0; await a.play(); } catch (e) {} if (isFinite(a.duration) && a.duration) need = Math.max(need, a.duration * 1000 + 700); }
+      if (a) { curAudio = a; try { S() && S().duck(0.35); } catch (e) {} a.onended = () => { try { S() && S().duck(1); } catch (e) {} }; try { a.currentTime = 0; await a.play(); } catch (e) {} if (isFinite(a.duration) && a.duration) need = Math.max(need, a.duration * 1000 + 700); }
       SCENES[L.id](st, ctx);
       const t0 = Date.now();
       while (Date.now() - t0 < need) { if (dead()) return; await sleep(100); }
@@ -1498,6 +1498,31 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       hiss('highpass', 6000, 0.008);
       const beat = () => { const t = T(); tone('sine', 66, t, 0.16, 0.35, 40, g); tone('sine', 58, t + 0.2, 0.18, 0.25, 36, g); };
       beat(); timers.push(setInterval(beat, 1100));
+    } else if (id === 'film') {
+      // musique de casse : basse pulsée, nappes mineures, timbales, pluie légère
+      const bus = ctx.createGain(); bus.gain.value = 0.9; bus.connect(g);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380; lp.connect(bus);
+      src('sawtooth', 55, 0.05, lp); src('sawtooth', 55.4, 0.05, lp);
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.08; lg.gain.value = 160; lfo.connect(lg); lg.connect(lp.frequency); lfo.start(); nodes.push(lfo);
+      hiss('bandpass', 1800, 0.025, 0.4);
+      const CH = [[110, 130.8, 164.8], [87.3, 110, 130.8], [73.4, 87.3, 110], [82.4, 103.8, 123.5]]; // la m, fa, ré m, mi
+      const BASS = [55, 55, 65.4, 55, 82.4, 55, 73.4, 65.4];
+      let step = 0; const beat = 0.25; // croches à 120
+      const tick = () => {
+        const t = T(), bar = Math.floor(step / 16), ch = CH[bar % 4], root = ch[0] / 2;
+        // basse pulsée
+        const f = (BASS[step % 8] / 55) * root;
+        const o = ctx.createOscillator(), og = ctx.createGain(), ft = ctx.createBiquadFilter(); o.type = 'sawtooth'; o.frequency.value = f; ft.type = 'lowpass'; ft.frequency.setValueAtTime(900, t); ft.frequency.exponentialRampToValueAtTime(200, t + 0.18); og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.16, t + 0.01); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.22); o.connect(ft); ft.connect(og); og.connect(bus); o.start(t); o.stop(t + 0.25);
+        // charleston discret
+        if (step % 2 === 1) noise(t, 0.04, 0.05, 'highpass', 8000, 0.7, bus);
+        // nappe au début de chaque mesure
+        if (step % 16 === 0) ch.forEach((fr, k) => { [1, 2].forEach((m) => { const p = ctx.createOscillator(), pg = ctx.createGain(), pf = ctx.createBiquadFilter(); p.type = k ? 'triangle' : 'sawtooth'; p.frequency.value = fr * m * (1 + (Math.random() - 0.5) * 0.004); pf.type = 'lowpass'; pf.frequency.value = 1400; pg.gain.setValueAtTime(0.0001, t); pg.gain.exponentialRampToValueAtTime(0.035 / m, t + 1.2); pg.gain.exponentialRampToValueAtTime(0.0001, t + 4.2); p.connect(pf); pf.connect(pg); pg.connect(bus); p.start(t); p.stop(t + 4.3); }); });
+        // timbale toutes les deux mesures, caisse sur les temps 2 et 4
+        if (step % 32 === 0) { tone('sine', 70, t, 1.2, 0.5, 40, bus); noise(t, 0.3, 0.2, 'lowpass', 300, 1, bus); }
+        if (step % 8 === 4) noise(t, 0.12, 0.12, 'bandpass', 1800, 1.2, bus);
+        step++;
+      };
+      tick(); timers.push(setInterval(tick, beat * 1000));
     } else if (id === 'pluie') {
       hiss('bandpass', 1800, 0.06, 0.4); hiss('lowpass', 500, 0.08); hiss('highpass', 7000, 0.015);
       const drop = () => { const t = T(); for (let i = 0; i < 6; i++) noise(t + Math.random() * 0.9, 0.02, 0.05 + Math.random() * 0.08, 'bandpass', 2000 + Math.random() * 3000, 6, g); };
@@ -1520,10 +1545,11 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (id) amb = startAmbience(id);
     return true;
   }
+  function duck(level) { if (!amb || !ctx) return; const t = T(); amb.g.gain.cancelScheduledValues(t); amb.g.gain.setTargetAtTime(Math.max(0.0001, level), t, 0.25); }
   function setVolume(v) { vol = Math.max(0, Math.min(1, +v || 0)); if (master) master.gain.setTargetAtTime(vol, ctx.currentTime, 0.05); }
   function play(id) { if (!on() || !FX[id]) return false; FX[id](); return true; }
 
-  window.ValmontSound = { unlock, play, ambience, setVolume, isOn: on, names: NAMES, pending: () => ambId };
+  window.ValmontSound = { unlock, play, ambience, duck, setVolume, isOn: on, names: NAMES, pending: () => ambId };
 })();
 
 </script>
