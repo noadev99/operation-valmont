@@ -295,11 +295,13 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   </div>
   <div class="card"><h3><span>L'équipe</span><span id="cTeamCount"></span></h3>
     <div id="cTeam"></div>
-    <form class="row" id="addForm" autocomplete="off">
+    <p class="hint">Les braqueurs apparaissent tout seuls dès qu'un joueur a créé son personnage dans son carnet (même code de salon). Leur pion se pose devant l'entrée principale.</p>
+    <details><summary class="hint" style="cursor:pointer">Ajouter à la main (joueur sans téléphone)</summary>
+    <form class="row" id="addForm" autocomplete="off" style="margin-top:8px">
       <input id="newName" maxlength="18" placeholder="Nom de code" aria-label="Nom de code du braqueur">
       <select id="newRole" aria-label="Rôle"></select>
       <button class="b go" type="submit">Ajouter</button>
-    </form>
+    </form></details>
   </div>
   </div>
   <div class="ccol">
@@ -2442,6 +2444,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (e.key === 'valmont-salon' && e.newValue && e.newValue !== room) { room = e.newValue; startRelay(true); render(); }
   });
   function loadRoster() { if (!isConsole()) return; try { Object.values(JSON.parse(localStorage.getItem('valmont-roster') || '{}')).forEach(applyCard); } catch (e) {} }
+  /* un braqueur qui rejoint (ou une nouvelle partie) : son pion se pose devant l'entrée principale, sur le plan */
+  function spawn(m, i) { m.floor = 'rdc'; m.room = ''; m.x = 250 + (i % 4) * 46 + (i >= 4 ? 23 : 0); m.y = 488 - (i >= 4 ? 4 : 0); }
   function applyCard(c) {
     if (!c || !c.id || !c.name || !c.role || !isConsole()) return;
     if ((state.gone || []).includes(c.id)) return;
@@ -2457,11 +2461,13 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
         const used = new Set(s.team.map((t) => t.color));
         const color = COLORS.find((x) => !used.has(x)) || COLORS[s.team.length % COLORS.length];
         m = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), pid: c.id, name, role: c.role, hp: R.hp, hpMax: R.hp, en: R.en, enMax: R.en, floor: '', room: '', x: null, y: null, color, ts: 0, gear: [] };
-        s.team.push(m);
+        spawn(m, s.team.length); s.team.push(m);
+        newcomer = m;
       }
       m.name = name; m.role = c.role; m.hpMax = R.hp; m.enMax = R.en; m.gear = gear;
       if ((c.ts || 0) > (m.ts || 0)) { m.hp = clamp(+c.hp || 0, 0, m.hpMax); m.en = clamp(+c.en || 0, 0, m.enMax); m.ts = c.ts; }
     });
+    if (newcomer) { const nm = newcomer; newcomer = null; announce(nm.name.toUpperCase() + ' REJOINT L\'ÉQUIPE · ' + nm.role.toUpperCase(), 'ping', nm.name + ' rejoint l\'équipe (' + nm.role + ').'); }
   }
   function pushToPlayer(m) {
     if (!m || !m.pid) return;
@@ -2722,7 +2728,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     } else if (lastRollAt === null) lastRollAt = s.roll ? s.roll.at : 0;
   }
 
-  let pieceShown = '';
+  let pieceShown = '', newcomer = null;
   let lastScene = '', sceneWho = '', sceneT = null, lastIntro = null, sceneSince = 0; // la télé ignore les scènes lancées avant son démarrage, ou vieilles de plus de 20 min
   const hideSec = (s) => (s.au && s.au.sceneHide != null ? s.au.sceneHide : 15);
   function sceneResult(s, st) { s.scene = Object.assign({}, s.scene, { st, wait: false, proposal: null, at: Date.now(), hideAt: st !== 'action' && hideSec(s) ? Date.now() + hideSec(s) * 1000 : 0 }); }
@@ -2955,7 +2961,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.zoom) { zoom = !zoom; return render(); }
     if (d.fog) return commit((s) => { s.fog = !s.fog; });
     if (d.out) { const id = selected; selected = null; return commit((s) => { const m = s.team.find((t) => t.id === id); if (m) { m.floor = ''; m.x = null; m.y = null; m.room = ''; } }); }
-    if (d.intro === 'new') { selected = null; commit((s) => { const team = s.team.map((m) => Object.assign({}, m, { hp: m.hpMax, en: m.enMax, floor: '', room: '', x: null, y: null, ts: Date.now() })); Object.assign(s, fresh(), { team, gone: s.gone, intro: { phase: 'video', at: Date.now() } }); tacc = 0; }); state.team.forEach(pushToPlayer); return; }
+    if (d.intro === 'new') { selected = null; commit((s) => { const team = s.team.map((m) => Object.assign({}, m, { hp: m.hpMax, en: m.enMax, ts: Date.now() })); team.forEach((m, i) => spawn(m, i)); Object.assign(s, fresh(), { team, gone: s.gone, intro: { phase: 'video', at: Date.now() } }); tacc = 0; }); state.team.forEach(pushToPlayer); return; }
     if (d.intro) return commit((s) => { s.intro = d.intro === 'off' ? null : { phase: d.intro, at: Date.now() }; });
     if (d.piece) { pieceShown = d.piece; renderPiece(state); try { $('pieceCard').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} return; }
     if (d.scwho != null) { sceneWho = d.scwho; return render(); }
@@ -2993,7 +2999,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       if (!confirmReset) { confirmReset = true; render(); return; }
       confirmReset = false;
       selected = null;
-      commit((s) => { const team = s.team.map((m) => Object.assign({}, m, { hp: m.hpMax, en: m.enMax, floor: '', room: '', x: null, y: null, ts: Date.now() })); Object.assign(s, fresh(), { team, gone: s.gone }); tacc = 0; });
+      commit((s) => { const team = s.team.map((m) => Object.assign({}, m, { hp: m.hpMax, en: m.enMax, ts: Date.now() })); team.forEach((m, i) => spawn(m, i)); Object.assign(s, fresh(), { team, gone: s.gone }); tacc = 0; });
       state.team.forEach(pushToPlayer);
     } else render();
   });
@@ -3025,7 +3031,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const role = $('newRole').value, R = ROLES[role] || { hp: 10, en: 7 };
     const used = new Set(state.team.map((m) => m.color));
     const color = COLORS.find((c) => !used.has(c)) || COLORS[state.team.length % COLORS.length];
-    commit((s) => { s.team.push({ id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, role, hp: R.hp, hpMax: R.hp, en: R.en, enMax: R.en, floor: '', room: '', color }); });
+    commit((s) => { const m = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, role, hp: R.hp, hpMax: R.hp, en: R.en, enMax: R.en, floor: '', room: '', color }; spawn(m, s.team.length); s.team.push(m); });
     $('newName').value = '';
   });
   function roll(show) {
