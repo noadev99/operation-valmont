@@ -623,6 +623,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 .vp .bill{position:absolute;left:7%;right:7%;bottom:3.5%;text-align:center;font:500 1.05vh/1.25 "Archivo Narrow","Arial Narrow",sans-serif;color:rgba(243,234,214,.72);letter-spacing:.12em;text-transform:uppercase;transform:scaleY(1.35);transform-origin:bottom}
 .vp .bill b{color:#f3ead6;font-weight:700}
 .vp .rate{position:absolute;bottom:1.2%;left:7%;font:700 1.1vh "Archivo",sans-serif;border:1px solid rgba(243,234,214,.6);padding:.2vh .6vh;color:rgba(243,234,214,.8);letter-spacing:.1em}
+.vp .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;font:400 clamp(1.6rem,4vh,2.6rem) "Saira Stencil One",Impact,sans-serif;letter-spacing:.12em;padding:1.6vh 4.5vh;background:#e8b64a;color:#14110f;border:3px solid #14110f;cursor:pointer;box-shadow:0 0 0 0 rgba(232,182,74,.7);animation:vpPulse 1.8s ease-out infinite 1.6s}
+@keyframes vpPulse{0%{box-shadow:0 0 0 0 rgba(232,182,74,.7)}100%{box-shadow:0 0 0 28px rgba(232,182,74,0)}}
+.vp .play:hover{background:#ffd36b}
 .vp .close{position:absolute;top:18px;right:18px;background:rgba(0,0,0,.5);color:#f3ead6;border:1px solid rgba(243,234,214,.4);font:600 .9rem "Archivo",sans-serif;padding:8px 14px;cursor:pointer;letter-spacing:.08em;z-index:2}
 @media (prefers-reduced-motion:reduce){.vi *,.vp *{animation-duration:.01s!important;animation-iteration-count:1!important}}
 `;
@@ -777,7 +780,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const names = (opts.names || []).filter(Boolean).slice(0, 4);
     const el = document.createElement('div'); el.className = 'vp';
     const fallback = `radial-gradient(ellipse at 50% 35%,rgba(232,182,74,.35),transparent 45%),linear-gradient(180deg,#0b1020 0%,#1a1420 50%,#0a0a0d 100%)`;
-    el.innerHTML = `<button class="close" type="button">Fermer ✕</button><div class="frame"><div class="art" style="background-image:${fallback}"></div>
+    el.innerHTML = `${opts.play ? '' : '<button class="close" type="button">Fermer ✕</button>'}<div class="frame">${opts.play ? '<button class="play" type="button">▶ JOUER</button>' : ''}<div class="art" style="background-image:${fallback}"></div>
       <div class="facade-fb" style="position:absolute;left:10%;right:10%;top:22%;opacity:.55">${FACADE.replace('class="draw"', '')}</div>
       <div class="shade"></div><div class="sweep"></div>
       <div class="cast">${esc(names.join('   ·   ') || 'Une équipe · Une nuit')}</div>
@@ -797,10 +800,14 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     sfx('boom'); setTimeout(() => sfx('stinger'), 300);
     const shut = () => { el.remove(); document.removeEventListener('keydown', k); if (opts.onClose) opts.onClose(); };
     const k = (e) => { if (e.key === 'Escape') shut(); };
-    el.querySelector('.close').onclick = shut; document.addEventListener('keydown', k);
+    const cb = el.querySelector('.close'), pb = el.querySelector('.play');
+    if (cb) cb.onclick = shut;
+    if (pb) { pb.onclick = () => { sfx('boom'); shut(); }; setTimeout(() => { try { pb.focus(); } catch (e) {} }, 300); }
+    document.addEventListener('keydown', k);
   }
 
-  window.ValmontIntro = { play, poster, close, LINES };
+  const active = () => !!document.querySelector('.vi,.vp');
+  window.ValmontIntro = { play, poster, close, active, LINES };
 })();
 
 </script>
@@ -2273,7 +2280,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     btn.hidden = ValmontSound.isOn();
     if (!ValmontSound.isOn()) { lastSnd = s.snd ? s.snd.at : 0; lastAlert = s.alert; lastPing = s.ping ? s.ping.at : 0; return; }
     ValmontSound.setVolume(s.vol);
-    ValmontSound.ambience(s.amb);
+    if (!(window.ValmontIntro && ValmontIntro.active())) ValmontSound.ambience(s.amb);
     if (s.snd && s.snd.at !== lastSnd) { if (lastSnd !== null) ValmontSound.play(s.snd.id); lastSnd = s.snd.at; }
     if (s.auto && lastAlert !== null && lastAlert < 7 && s.alert >= 7) ValmontSound.play('alarm');
     if (s.auto && s.ping && s.ping.at !== lastPing && lastPing !== null) ValmontSound.play('ping');
@@ -2656,7 +2663,25 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (show) commit((s) => { s.roll = { at: Date.now(), who: m ? m.name : 'Le MJ', skill: $('rSkill').value, d, mod, dd, total, verdict, win }; sceneJudge(s, d, total, dd); });
   }
 
+  /* écran de démarrage de la télé : noir, un bouton LANCER → l'intro → l'affiche avec JOUER → le jeu */
+  function boot() {
+    if (isConsole() || window.parent !== window || !window.ValmontIntro || /[?&]direct/.test(location.search)) return;
+    const b = document.createElement('div'); b.id = 'boot';
+    b.style.cssText = 'position:fixed;inset:0;z-index:120;background:#000;display:grid;place-items:center';
+    b.innerHTML = '<button type="button" style="font:400 clamp(2rem,5vw,3.4rem) var(--display);letter-spacing:.18em;padding:2.2vh 6vh;background:transparent;color:#f3ead6;border:2px solid rgba(243,234,214,.75);cursor:pointer">LANCER</button>';
+    document.body.appendChild(b);
+    const go = () => {
+      b.remove(); try { ValmontSound.unlock(); } catch (e) {}
+      const nm = (state.team || []).map((m) => m.name);
+      setTimeout(() => ValmontIntro.play({ names: nm, onEnd: () => ValmontIntro.poster({ names: nm, play: true, onClose: () => render() }) }), 120);
+    };
+    b.querySelector('button').addEventListener('click', go);
+    setTimeout(() => { try { b.querySelector('button').focus(); } catch (e) {} }, 100);
+  }
+  window.addEventListener('hashchange', () => { if (isConsole()) { const b = document.getElementById('boot'); if (b) b.remove(); } });
+
   route();
+  boot();
   renderStatus();
 })();
 </script>
