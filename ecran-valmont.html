@@ -188,6 +188,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 .win { color: var(--green); } .lose { color: var(--red); }
 .hint { color: var(--muted); font-size: .85rem; margin: 0; }
 .console { max-width: 820px; }
+.scgrp { margin-bottom: 10px; }
+.scgt { font: 600 .72rem var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--gold, #e8b64a); margin: 4px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+.scgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
 .ccols { display: grid; gap: 14px; }
 .piece .pz-sec { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
 .piece .pz-sec > b { font: 600 .72rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
@@ -558,7 +561,17 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     window['__' + id] = (el) => { const i = +el.dataset.i + 1; if (i < cand.length) { el.dataset.i = i; el.src = cand[i]; } else { const d = document.createElement('div'); d.style.cssText = 'width:100%;height:100%'; d.innerHTML = fb; el.replaceWith(d); } };
     return `<img data-i="0" src="${cand[0]}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="window.__${id}(this)">`;
   }
-  window.ValmontScenes = { svg, html, situations: Object.keys(TITLE).map((k) => ({ id: k, name: TITLE[k] })), states: [['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']] };
+  /* l'ordre du déroulé d'une partie : entrer → gala et étage → circuler → chambre forte → fuite */
+  const FLOW = [
+    ['1 · Entrer dans la banque', ['smoking', 'traiteur', 'toit', 'egouts', 'quai', 'ventilation', 'crochetage']],
+    ['2 · Le gala et le 1er étage', ['bar', 'empreinte', 'badgevol', 'diversion', 'bureau', 'hack']],
+    ['3 · Circuler dans la banque', ['camera', 'garde', 'cachette', 'badge', 'escalier', 'combat', 'soin']],
+    ['4 · La chambre forte', ['lasers', 'code', 'coffre']],
+    ['5 · La fuite', ['fuite']],
+  ];
+  const ORDER = FLOW.flatMap(([, ids]) => ids), GROUP = {};
+  FLOW.forEach(([g, ids]) => ids.forEach((i) => { GROUP[i] = g; }));
+  window.ValmontScenes = { svg, html, groups: FLOW.map(([g, ids]) => ({ name: g, items: ids.filter((i) => TITLE[i]).map((i) => ({ id: i, name: TITLE[i] })) })), situations: ORDER.filter((k) => TITLE[k]).map((k) => ({ id: k, name: TITLE[k], group: GROUP[k] })), states: [['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']] };
 })();
 
 </script>
@@ -2709,7 +2722,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       const tn = (s.team || []).map((m) => m.name);
       const sc = s.scene && s.scene.on ? s.scene : null, names = Object.fromEntries(ValmontScenes.situations.map((x) => [x.id, x.name]));
       $('cScenes').innerHTML = `<div class="hint" style="margin:0 0 4px">1. Qui joue</div><div class="seg" style="margin-bottom:8px">${[['', 'Les deux'], ['a', 'Seul · ' + (tn[0] || 'A')], ['b', 'Seul · ' + (tn[1] || 'B')]].map(([k, l]) => `<button class="b sm ${sceneWho === k ? 'on go' : ''}" data-scwho="${k}">${esc(l)}</button>`).join('')}</div>` + `<div class="hint" style="margin:6px 0 4px">2. Difficulté (12 par défaut si tu n'en choisis pas)</div><div class="seg" style="margin-bottom:8px">${[[null, 'Aucune'], [8, '8'], [12, '12'], [15, '15'], [18, '18']].map(([v, l]) => `<button class="b sm ${s.dd === v ? 'on go' : ''}" data-dd="${v}" type="button">${l}</button>`).join('')}</div>`
-        + `<div class="hint" style="margin:6px 0 4px">3. Touche la situation : l'image « en train » apparaît</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:10px">${ValmontScenes.situations.map((x) => `<button class="b sm ${sc && sc.sit === x.id ? 'on go' : ''}" data-scgo="${x.id}" type="button">${esc(x.name)}</button>`).join('')}</div>`
+        + `<div class="hint" style="margin:6px 0 4px">3. Touche la situation : l'image « en train » apparaît</div>${ValmontScenes.groups.map((g) => `<div class="scgrp"><div class="scgt">${esc(g.name)}</div><div class="scgrid">${g.items.map((x) => `<button class="b sm ${sc && sc.sit === x.id ? 'on go' : ''}" data-scgo="${x.id}" type="button">${esc(x.name)}</button>`).join('')}</div></div>`).join('')}`
         + `<div class="hint" style="margin:6px 0 4px">Quand un joueur a lancé son dé</div><div class="seg" style="margin-bottom:8px">${[[0, 'Je valide l\'image'], [1, 'Image automatique']].map(([v, l]) => `<button class="b sm ${(s.au && s.au.sceneAuto ? 1 : 0) === v ? 'on go' : ''}" data-scauto="${v}" type="button">${l}</button>`).join('')}</div>`
         + (sc && sc.proposal ? `<div class="camrow" style="background:rgba(255,200,60,.12);padding:8px;border:1px solid var(--amber)"><span>Jet de ${esc(sc.proposal.who)} : <b>${sc.proposal.total}</b> contre ${sc.proposal.dd} → <b>${sc.proposal.st === 'ok' ? 'RÉUSSITE' : 'ÉCHEC'}</b></span><span class="seg"><button class="b sm ${sc.proposal.st === 'ok' ? 'go' : ''}" data-scres="ok" type="button">${sc.proposal.st === 'ok' ? '★ ' : ''}Afficher réussite</button><button class="b sm ${sc.proposal.st === 'ko' ? 'red' : ''}" data-scres="ko" type="button">${sc.proposal.st === 'ko' ? '★ ' : ''}Afficher échec</button></span></div>` : '')
         + (sc ? `<div class="camrow"><span><b>${esc(names[sc.sit] || '')}</b> · ${sc.wait ? 'en attente du jet…' : sc.st === 'ok' ? 'réussite' : sc.st === 'ko' ? 'échec' : 'en cours'}</span><span class="seg">${[['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']].map(([k, l]) => `<button class="b sm ${sc.st === k ? 'on go' : ''}" data-scres="${k}" type="button">${l}</button>`).join('')}</span></div>` : '')
