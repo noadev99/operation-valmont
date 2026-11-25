@@ -684,7 +684,7 @@ button:disabled { opacity: .4; cursor: default; }
    ValmontIntro.poster({ names, onClose }) ouvre l'affiche
    ValmontIntro.close()                  ferme tout
    ValmontIntro.LINES                     le texte de la voix off (voix-01 … voix-10)
-   Voix off : fichiers intro/voix-01.mp3 (ou .m4a, .webm, .ogg, .wav), ou enregistrées sur voix.html (même navigateur).
+   Voix off : fichiers intro/voix-01.mp3 (ou .m4a, .webm, .ogg, .wav) en priorité, sinon celles enregistrées sur voix.html (même navigateur).
    Affiche : image scenes/affiche.jpg (ou .webp, .png) ; sans image, une affiche dessinée la remplace. */
 (function () {
   const LINES = [
@@ -801,10 +801,10 @@ button:disabled { opacity: .4; cursor: default; }
   }
   async function voice(i) {
     const key = 'voix-' + pad(i + 1);
+    // d'abord les voix traitées du dossier intro/ (voix robotisée), sinon l'enregistrement brut du navigateur
+    if (location.protocol !== 'file:') for (const e of EXT) { const a = await tryAudio(`intro/${key}.${e}`); if (a) return a; }
     const blob = await idbGet(key);
     if (blob) { const a = await tryAudio(URL.createObjectURL(blob)); if (a) return a; }
-    if (location.protocol === 'file:') return null;
-    for (const e of EXT) { const a = await tryAudio(`intro/${key}.${e}`); if (a) return a; }
     return null;
   }
 
