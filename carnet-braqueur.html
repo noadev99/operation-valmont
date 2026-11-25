@@ -560,7 +560,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   // un carnet par joueur dans le même navigateur : #joueur1, #joueur2… (salle d'entraînement)
   const slot = (location.hash.match(/joueur(\d)/) || [])[1];
   const KEY = 'valmont-carnet' + (slot ? '-' + slot : '');
-  const blank = () => ({ pid: 'p' + Math.random().toString(36).slice(2, 10), vts: 0, step: 'perso', name: '', role: -1, hp: 0, en: 0, gear: [], used: {}, prep: { minutes: 15, start: 0, end: 0, cur: null, done: {}, open: [], penalty: 0, order: [] }, boost: false, last: null });
+  const blank = () => ({ pid: 'p' + Math.random().toString(36).slice(2, 10), vts: 0, step: 'perso', name: '', role: -1, hp: 0, en: 0, gear: [], used: {}, prep: { tokens: 5, minutes: 15, start: 0, end: 0, cur: null, done: {}, open: [], penalty: 0, order: [] }, boost: false, last: null });
   let S = blank();
   try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(blank(), JSON.parse(raw)); S.prep = Object.assign(blank().prep, S.prep || {}); } catch (e) {}
   if (!S.pid) S.pid = 'p' + Math.random().toString(36).slice(2, 10);
@@ -585,7 +585,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   let known = []; try { known = JSON.parse(localStorage.getItem('valmont-known') || '[]'); } catch (e) {}
   const cards = {}; // persos du salon (pour reprendre le sien)
   // sauvegarde compacte du perso : suffit à le retrouver sur un autre téléphone
-  const snap = () => ({ g: S.gear, o: S.prep.open, pe: S.prep.penalty, or: S.prep.order, m: S.prep.minutes, s: S.prep.start, e: S.prep.end,
+  const snap = () => ({ tk: S.prep.tokens, g: S.gear, o: S.prep.open, pe: S.prep.penalty, or: S.prep.order, m: S.prep.minutes, s: S.prep.start, e: S.prep.end,
     d: Object.fromEntries(Object.entries(S.prep.done).map(([k, v]) => [k, [v.ok ? 1 : 0, v.d, v.mod, v.boost ? 1 : 0, v.total, v.gift || '']])) });
   const card = () => ({ k: 'p', id: S.pid, name: S.name, role: S.role >= 0 ? ROLES[S.role].name : '', hp: S.hp, en: S.en, gear: S.gear.concat(gifts()).slice(0, 12), ts: S.vts || 0, sv: snap() });
   function restoreFrom(c) {
@@ -594,7 +594,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     const sv = c.sv || {};
     S = blank();
     S.pid = c.id; S.name = c.name; S.role = ri; S.hp = c.hp; S.en = c.en; S.vts = c.ts || 0; S.gear = sv.g || [];
-    S.prep = Object.assign(S.prep, { open: sv.o || [], penalty: sv.pe || 0, order: sv.or || [], minutes: sv.m || 15, start: sv.s || 0, end: sv.e || 0,
+    S.prep = Object.assign(S.prep, { tokens: sv.tk != null ? sv.tk : 5, open: sv.o || [], penalty: sv.pe || 0, order: sv.or || [], minutes: sv.m || 15, start: sv.s || 0, end: sv.e || 0,
       done: Object.fromEntries(Object.entries(sv.d || {}).map(([k, a]) => [k, { ok: !!a[0], d: a[1], mod: a[2], boost: !!a[3], total: a[4], gift: a[5] || null }])) });
     lastHp = S.hp; lastEn = S.en; S.step = 'fiche';
     save(); push(); render();
@@ -711,27 +711,25 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     if (!P.start) {
       $view.innerHTML = `<div style="display:grid;gap:14px">
         <div class="card"><h2>Le repérage</h2>
-          <p>Avant le casse, vous avez un temps limité pour vous renseigner. Chaque piste prend du temps <b>réel</b> : pendant qu'elle avance, discutez de votre plan avec ton équipe.</p>
-          <p>Tu ne pourras pas tout faire. Partagez-vous les pistes, et quand tu débloques une piste cachée, donne le <b>mot-clé</b> à tes coéquipiers pour qu'ils puissent la suivre aussi.</p>
-          <p class="muted">Attends le signal du MJ pour lancer le chrono.</p></div>
-        <div class="card"><b>Durée choisie par le MJ</b><div class="row">${[10, 15, 20].map((m) => `<button class="btn ${P.minutes === m ? 'go' : ''}" data-min="${m}">${m} min</button>`).join('')}</div></div>
-        <button class="btn go full" id="startPrep">Lancer le chrono</button>
+          <p>Avant le casse, tu as <b>5 jetons d'enquête</b>. Chaque piste coûte 1 jeton et se joue tout de suite : tu lances le dé et la télé retourne la carte.</p>
+          <p>Tu ne pourras pas tout suivre : choisis bien, et partagez-vous les pistes avec ton équipe. Quand tu débloques une piste cachée, donne le <b>mot-clé</b> à tes coéquipiers. Un <b>20</b> au dé te rend ton jeton.</p></div>
+        <button class="btn go full" id="startPrep">Commencer le repérage</button>
       </div>`;
       return;
     }
-    const left = P.end - now, over = left <= 0;
+    const left = P.end - now, tk = P.tokens, over = (P.mjAt && left <= 0) || (tk <= 0 && !P.cur);
     const cur = P.cur && lead(P.cur.id);
     const res = S.last && P.done[S.last];
     $view.innerHTML = `<div style="display:grid;gap:12px">
-      <div class="clock ${left < 120000 ? 'late' : ''}"><div><span>Temps restant</span><br><b id="prepClock">${mmss(left)}</b></div><div style="text-align:right"><span>Pistes</span><br><b style="font-size:1.4rem">${Object.keys(P.done).length}</b></div></div>
+      <div class="clock ${P.mjAt && left < 120000 ? 'late' : ''}"><div><span>Jetons d'enquête</span><br><b id="prepClock" style="letter-spacing:.15em">${'●'.repeat(Math.max(0, tk))}<span style="opacity:.25">${'●'.repeat(Math.max(0, 5 - tk))}</span></b>${P.mjAt ? ` <span class="muted" style="font-size:.8rem">· ${mmss(left)}</span>` : ''}</div><div style="text-align:right"><span>Pistes</span><br><b style="font-size:1.4rem">${Object.keys(P.done).length}</b></div></div>
       ${res ? resultCard(lead(S.last), res, true) : ''}
-      ${cur ? busyCard(cur) : over ? `<div class="card"><h2>Temps écoulé</h2><p>Le repérage est fini. Montre ton carnet à ton équipe et passez au plan. Les infos marquées « Pour le MJ » sont à lui dire.</p><button class="btn go full" data-next="fiche">Ouvrir ma fiche</button></div>` : `
+      ${cur ? busyCard(cur) : over ? `<div class="card"><h2>Repérage terminé</h2><p>Tu n'as plus de jeton. Montre ton carnet à ton équipe et passez au plan. Les infos marquées « Pour le MJ » sont à lui dire.</p><button class="btn go full" data-next="fiche">Ouvrir ma fiche</button></div>` : `
         <label class="boost"><input type="checkbox" id="boost" ${S.boost ? 'checked' : ''} ${S.en < 1 ? 'disabled' : ''}><span>Forcer la prochaine piste : <b>+3</b> au jet, coûte 1 énergie (il t'en reste ${S.en})</span></label>
-        <div class="leads">${visible().filter((l) => !P.done[l.id]).map((l) => { const tight = l.sec * 1000 > left; return `
+        <div class="leads">${visible().filter((l) => !P.done[l.id]).map((l) => { const tight = false; return `
           <button class="lead ${l.hidden ? 'new' : ''}" data-lead="${l.id}" ${tight ? 'disabled' : ''}>
-            <div class="lt"><b>${esc(l.t)}</b><em>${dur(l.sec)}</em></div>
+            <div class="lt"><b>${esc(l.t)}</b><em>1 jeton</em></div>
             <small>${esc(l.p)}</small>
-            <span class="meta">${esc(l.skill)} · ${DIFF(l.dd)}${tight ? ' · plus le temps' : ''}</span></button>`; }).join('') || '<p class="muted">Tu as suivi toutes les pistes que tu connais. Un coéquipier a peut-être un mot-clé pour toi.</p>'}</div>`}
+            <span class="meta">${esc(l.skill)} · ${DIFF(l.dd)}</span></button>`; }).join('') || '<p class="muted">Tu as suivi toutes les pistes que tu connais. Un coéquipier a peut-être un mot-clé pour toi.</p>'}</div>`}
       <form class="card" id="codeForm" autocomplete="off"><b>Un coéquipier t'a donné un mot-clé ?</b>
         <div class="row"><input type="text" id="code" placeholder="Mot-clé" aria-label="Mot-clé"><button class="btn" type="submit">Débloquer</button></div>
         <p class="muted" id="codeMsg" style="font-size:.88rem"></p></form>
@@ -753,7 +751,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
       ${fresh ? `<div class="row" style="justify-content:space-between"><span class="bigroll">${r.total}</span><b class="${r.ok ? 'en' : 'hp'}">${r.d === 20 ? 'Réussite spectaculaire !' : r.d === 1 ? 'Catastrophe !' : r.ok ? 'Réussite' : 'Échec'}</b></div>` : ''}
       <b>${esc(l.t)}</b>
       <p>${esc(r.ok ? l.ok : l.ko)}</p>
-      <span class="roll">dé ${r.d} + ${r.mod}${r.boost ? ' + 3' : ''} = ${r.total} (${esc(l.skill)})${r.d === 20 ? ' · 1 minute de gagnée' : ''}</span>
+      <span class="roll">dé ${r.d} + ${r.mod}${r.boost ? ' + 3' : ''} = ${r.total} (${esc(l.skill)})${r.d === 20 ? ' · jeton rendu' : ''}</span>
       ${r.ok && l.unlock ? l.unlock.map((u) => { const x = lead(u); return x ? `<span class="code">Nouvelle piste : ${esc(x.t)}. Mot-clé pour ton équipe : ${esc(x.code)}</span>` : ''; }).join('') : ''}
       ${r.ok && l.gift ? `<div class="gift">Tu obtiens : ${esc(l.gift)}</div>` : ''}
       ${r.ok && l.mj ? `<span class="mj">Pour le MJ : ${esc(l.mj)}</span>` : ''}
@@ -818,30 +816,26 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     if (d.role != null) { const r = ROLES[+d.role]; S.role = +d.role; S.hp = r.hp; S.en = r.en; save(); return render(); }
     if (d.gear) { const n = d.gear; S.gear = S.gear.includes(n) ? S.gear.filter((x) => x !== n) : S.gear.concat(n); if (spent() > BUDGET) S.gear.pop(); save(); return render(); }
     if (d.min) { S.prep.minutes = +d.min; save(); return render(); }
-    if (b.id === 'startPrep') { S.prep.start = Date.now(); S.prep.end = S.prep.start + S.prep.minutes * 60000; save(); return render(); }
+    if (b.id === 'startPrep') { S.prep.start = Date.now(); S.prep.end = S.prep.start + 3 * 3600000; save(); return render(); }
     if (d.lead) {
       const l = lead(d.lead);
-      if (!l || S.prep.cur || S.prep.done[l.id] || Date.now() + l.sec * 1000 > S.prep.end) return;
+      if (!l || S.prep.done[l.id] || S.prep.tokens <= 0) return;
       const boost = S.boost && S.en > 0;
       if (boost) S.en -= 1;
-      S.prep.cur = { id: l.id, until: Date.now() + l.sec * 1000, boost };
+      S.prep.tokens -= 1;
       send({ k: 'b', pid: S.pid, who: S.name, id: l.id });
-      S.boost = false; S.last = null; save(); return render();
-    }
-    if (b.id === 'reveal') {
-      const c = S.prep.cur, l = c && lead(c.id);
-      if (!l) return;
       const mod = role().s[SKILLS.indexOf(l.skill)] || 0, dd = l.dd;
-      const dv = 1 + Math.floor(Math.random() * 20), total = dv + mod + (c.boost ? 3 : 0);
+      const dv = 1 + Math.floor(Math.random() * 20), total = dv + mod + (boost ? 3 : 0);
       const ok = dv === 20 || (dv !== 1 && total >= dd);
-      S.prep.done[l.id] = { ok, d: dv, mod, boost: c.boost, total, gift: ok ? l.gift : null };
+      S.prep.done[l.id] = { ok, d: dv, mod, boost, total, gift: ok ? l.gift : null };
       S.prep.order.push(l.id);
       if (ok && l.unlock) l.unlock.forEach((u) => { if (!S.prep.open.includes(u)) S.prep.open.push(u); });
       if (dv === 1) S.prep.penalty += 1;
-      if (dv === 20) S.prep.end += 60000;
-      S.prep.cur = null; S.last = l.id; save();
-      send({ k: 'r', pid: S.pid, who: S.name, id: l.id, t: l.t, ok, nat: dv === 20 ? 20 : dv === 1 ? 1 : 0, mj: l.mj || '' });
-      ValmontDice.overlay({ d: dv, title: l.t, mods: [{ label: l.skill, v: mod }, { label: 'effort', v: c.boost ? 3 : 0 }], dd: l.dd, hideDd: true }, render);
+      if (dv === 20) S.prep.tokens += 1;
+      S.boost = false; S.last = l.id; save();
+      const nat = dv === 20 ? 20 : dv === 1 ? 1 : 0;
+      setTimeout(() => send({ k: 'r', pid: S.pid, who: S.name, id: l.id, t: l.t, ok, nat, mj: l.mj || '' }), 2600);
+      ValmontDice.overlay({ d: dv, title: l.t, mods: [{ label: l.skill, v: mod }, { label: 'effort', v: boost ? 3 : 0 }], dd: l.dd, hideDd: true }, render);
       return;
     }
     if (b.id === 'okRes') { S.last = null; save(); return render(); }
@@ -878,7 +872,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     if (S.step !== 'reperage' || !S.prep.start) return;
     const P = S.prep, now = Date.now();
     const clk = document.getElementById('prepClock');
-    if (clk) clk.textContent = mmss(P.end - now);
+    if (clk && false) clk.textContent = mmss(P.end - now);
     if (P.cur) {
       const l = lead(P.cur.id), left = P.cur.until - now;
       const bar = document.getElementById('busyBar'), lt = document.getElementById('busyLeft');
