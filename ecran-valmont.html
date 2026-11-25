@@ -229,7 +229,6 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   <div class="rollfx" id="rollfx" hidden></div>
   <div class="scenefx" id="scenefx" hidden></div>
   <button class="to-sound" id="soundBtn" type="button">Activer le son</button>
-  <a class="to-console" href="#mj">Console MJ</a>
   <button class="syncnote" id="syncnote" type="button" title="Code du salon"></button>
 </div>
 
@@ -322,8 +321,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   </details>
 
   <div class="card"><h3><span>Intro du film</span><span id="cIntroNow"></span></h3>
-    <div class="btns"><button class="b go" data-intro="video" type="button">▶ Lancer l'intro sur la télé</button><button class="b" data-intro="poster" type="button">Montrer l'affiche</button><button class="b red" data-intro="off" type="button">Fermer</button></div>
-    <p class="hint">Une minute de vidéo qui raconte le contexte (avec ta voix si tu l'as enregistrée sur <a href="voix.html" target="_blank" rel="noopener">la page des voix</a>), puis l'affiche du film. Active le son de la télé avant. Sur la télé, « Passer » ou Échap saute l'intro.</p>
+    <div class="btns"><button class="b go" data-intro="new" type="button">Nouvelle partie + intro</button><button class="b" data-intro="video" type="button">▶ Rejouer l'intro</button><button class="b" data-intro="poster" type="button">Montrer l'affiche</button><button class="b red" data-intro="off" type="button">Fermer</button></div>
+    <p class="hint"><b>Le soir de la partie :</b> touche « Nouvelle partie + intro ». Tout est remis à zéro (plan dans le brouillard, rien de découvert), puis la télé joue l'intro. Si la télé vient d'être ouverte, ce sont les joueurs qui touchent LANCER puis JOUER. Une minute de vidéo qui raconte le contexte (avec ta voix si tu l'as enregistrée sur <a href="voix.html" target="_blank" rel="noopener">la page des voix</a>), puis l'affiche du film. Active le son de la télé avant. Sur la télé, « Passer » ou Échap saute l'intro.</p>
   </div>
 
   <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
@@ -344,7 +343,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   </div>
 
   <div class="card"><h3>Partie</h3>
-    <p class="hint">Remet l'heure à 21h30, l'alerte à 0, le butin et le journal à zéro. L'équipe est gardée.</p>
+    <p class="hint">Remet tout à zéro : plan dans le brouillard, caméras et gardes cachés, heure 21h30, alerte 0, butin, journal et scènes effacés. L'équipe est gardée (PV et énergie remis au maximum).</p>
     <div class="btns"><button class="b red" id="resetBtn">Nouvelle partie</button></div>
   </div>
 </div>
@@ -1866,7 +1865,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   function fresh() {
     return { floor: 'rdc', t: 30, alert: 0, show: { cams: false, guards: false, lasers: false, labels: true }, team: [], loot: 0, log: [], banner: { on: false, text: '' }, roll: null, prepEnd: 0,
       fog: true, vis: {}, seen: {}, gpos: {}, ping: null, snd: null, amb: '', vol: 0.7, auto: true, gone: [],
-      view: 'auto', board: {}, t0: Date.now(), mids: [], req: [], feed: [], fired: [], dd: null, calmAt: 0, _la: 0, au: { clock: false, speed: 3, events: true, calm: true, reveal: true, move: false } };
+      scene: null, intro: null, view: 'auto', board: {}, t0: Date.now(), mids: [], req: [], feed: [], fired: [], dd: null, calmAt: 0, _la: 0, au: { clock: false, speed: 3, events: true, calm: true, reveal: true, move: false } };
   }
   function norm(d) {
     const s = Object.assign(fresh(), d || {});
@@ -2579,6 +2578,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.zoom) { zoom = !zoom; return render(); }
     if (d.fog) return commit((s) => { s.fog = !s.fog; });
     if (d.out) { const id = selected; selected = null; return commit((s) => { const m = s.team.find((t) => t.id === id); if (m) { m.floor = ''; m.x = null; m.y = null; m.room = ''; } }); }
+    if (d.intro === 'new') { selected = null; commit((s) => { const team = s.team.map((m) => Object.assign({}, m, { hp: m.hpMax, en: m.enMax, floor: '', room: '', x: null, y: null, ts: Date.now() })); Object.assign(s, fresh(), { team, gone: s.gone, intro: { phase: 'video', at: Date.now() } }); tacc = 0; }); state.team.forEach(pushToPlayer); return; }
     if (d.intro) return commit((s) => { s.intro = d.intro === 'off' ? null : { phase: d.intro, at: Date.now() }; });
     if (d.scwho != null) { sceneWho = d.scwho; return render(); }
     if (d.scgo) return commit((s) => { s.scene = { on: true, sit: d.scgo, st: 'action', who: sceneWho, at: Date.now(), wait: true, hideAt: 0 }; });
