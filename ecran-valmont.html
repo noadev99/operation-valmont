@@ -1833,44 +1833,117 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
 </script>
 <script>
-/* Relais en ligne entre appareils (téléphone des joueurs, console du MJ, télé), via ntfy.sh :
-   un service public gratuit, sans compte. Chaque salon a son propre canal, nommé d'après son code.
-   ValmontRelay.open(code, onMessage, onStatus) → { send(objet), close() }
-   ValmontRelay.newCode()                       → un code de salon au hasard
-   Une page publiée sur Claude ne peut pas appeler ce service : onStatus reçoit alors « off ». */
+/* Relais en ligne entre appareils (téléphones des joueurs, console du MJ, télé).
+   Principal : des serveurs MQTT publics (sans compte, sans quota), joints en parallèle pour qu'une panne d'un seul ne coupe rien.
+   Secours : ntfy.sh (limité à 250 messages par jour et par adresse Internet).
+   Chaque salon a son canal, nommé d'après son code. Les dernières infos (état de la partie, pièces découvertes,
+   chrono, fiches des joueurs) sont « retenues » : un appareil qui arrive en retard les reçoit tout de suite.
+   ValmontRelay.open(code, onMessage, onStatus) → { send(objet) → Promise<boolean>, close() }
+   ValmontRelay.newCode() → un code de salon au hasard
+   Une page publiée sur Claude ne peut pas utiliser le relais : onStatus reçoit alors « off ». */
 (function () {
-  const HOST = 'https://ntfy.sh/';
-  const topic = (code) => 'valmont-' + String(code).toLowerCase();
+  const BROKERS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt', 'wss://test.mosquitto.org:8081/'];
+  const NTFY = 'https://ntfy.sh/';
+  const RETAIN = { s: 1, v: 1, c: 1, p: 1 };
+  const enc = new TextEncoder(), dec = new TextDecoder();
+  const base = (code) => 'valmont-ops/' + String(code).toLowerCase();
   function newCode() {
     const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     return Array.from({ length: 6 }, () => A[Math.floor(Math.random() * A.length)]).join('');
   }
-  function open(code, onMessage, onStatus) {
-    const url = HOST + topic(code);
-    let es = null, closed = false, ok = true, seen = new Set();
-    const say = (st) => { if (onStatus) onStatus(st); };
-    function start() {
+  const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+  /* ---------- MQTT 3.1.1 minimal, par-dessus WebSocket ---------- */
+  const str = (s) => { const b = enc.encode(s); return [b.length >> 8, b.length & 255, ...b]; };
+  const rlen = (n) => { const o = []; do { let d = n % 128; n = Math.floor(n / 128); if (n > 0) d |= 128; o.push(d); } while (n > 0); return o; };
+  function packet(first, body) { const b = body instanceof Uint8Array ? body : Uint8Array.from(body); return Uint8Array.from([first, ...rlen(b.length), ...b]); }
+  function connection(url, topicBase, onMsg, onState) {
+    let ws = null, alive = false, closed = false, ping = null, retry = 0, pid = 1;
+    function open() {
       if (closed) return;
-      try { es = new EventSource(url + '/sse?since=all'); } catch (e) { say('off'); return; }
-      es.onopen = () => say('on');
-      es.onerror = () => say(ok ? 'retry' : 'off');
-      es.onmessage = (ev) => {
-        try {
-          const m = JSON.parse(ev.data);
-          if (m.event && m.event !== 'message') return;
-          if (seen.has(m.id)) return; seen.add(m.id);
-          onMessage(JSON.parse(m.message), (m.time || 0) * 1000);
-        } catch (e) { /* message qui n'est pas pour nous */ }
+      try { ws = new WebSocket(url, 'mqtt'); } catch (e) { return later(); }
+      ws.binaryType = 'arraybuffer';
+      let buf = new Uint8Array(0);
+      ws.onopen = () => {
+        const cid = 'vo' + rid();
+        ws.send(packet(0x10, [...str('MQTT'), 4, 2, 0, 60, ...str(cid)]));
       };
+      ws.onmessage = (e) => {
+        const add = new Uint8Array(e.data); const t = new Uint8Array(buf.length + add.length); t.set(buf); t.set(add, buf.length); buf = t;
+        while (buf.length >= 2) {
+          let mul = 1, len = 0, i = 1, d;
+          do { if (i >= buf.length) return; d = buf[i++]; len += (d & 127) * mul; mul *= 128; } while (d & 128);
+          if (buf.length < i + len) return;
+          const type = buf[0] >> 4, body = buf.slice(i, i + len); buf = buf.slice(i + len);
+          if (type === 2) { // CONNACK
+            if (body[1] === 0) { alive = true; retry = 0; ws.send(packet(0x82, [pid >> 8, pid & 255, ...str(topicBase + '/#'), 0])); pid = (pid % 65000) + 1; onState(true); clearInterval(ping); ping = setInterval(() => { try { ws.send(Uint8Array.from([0xC0, 0])); } catch (er) {} }, 30000); }
+            else ws.close();
+          } else if (type === 3) { // PUBLISH
+            const tl = (body[0] << 8) | body[1], qos = (buf.length, 0), payload = body.slice(2 + tl);
+            try { onMsg(dec.decode(payload)); } catch (er) {}
+          }
+        }
+      };
+      ws.onerror = () => {};
+      ws.onclose = () => { clearInterval(ping); if (alive) { alive = false; onState(false); } later(); };
     }
-    start();
+    function later() { if (closed) return; retry++; setTimeout(open, Math.min(15000, 1000 * retry)); }
+    open();
+    return {
+      get up() { return alive; },
+      publish(topic, text, retain) { if (!alive) return false; try { ws.send(packet(0x30 | (retain ? 1 : 0), [...str(topic), ...enc.encode(text)])); return true; } catch (e) { return false; } },
+      close() { closed = true; clearInterval(ping); try { ws.close(); } catch (e) {} },
+    };
+  }
+
+  /* ---------- ntfy (secours) ---------- */
+  function ntfyChannel(code, onMsg, onState) {
+    const url = NTFY + 'valmont-' + String(code).toLowerCase();
+    let es = null, closed = false, okPost = true;
+    try { es = new EventSource(url + '/sse?since=all'); } catch (e) { return null; }
+    es.onopen = () => onState(true);
+    es.onerror = () => onState(false);
+    es.onmessage = (ev) => { try { const m = JSON.parse(ev.data); if (m.event && m.event !== 'message') return; onMsg(m.message); } catch (e) {} };
+    return {
+      get up() { return !closed; },
+      publish(topic, text) { fetch(url, { method: 'POST', body: text }).then((r) => { okPost = r.ok; }).catch(() => { okPost = false; }); return true; },
+      close() { closed = true; try { es.close(); } catch (e) {} },
+    };
+  }
+
+  function open(code, onMessage, onStatus) {
+    const tb = base(code), seen = new Set(), say = (st) => { if (onStatus) onStatus(st); };
+    const links = [];
+    let closed = false, ntfy = null, lastSt = '';
+    const upCount = () => links.filter((l) => l.up).length + (ntfy && ntfy.up && ntfySeen ? 1 : 0);
+    let ntfySeen = false;
+    const refresh = () => { const st = links.some((l) => l.up) || (ntfy && ntfySeen) ? 'on' : 'retry'; if (st !== lastSt) { lastSt = st; say(st); } };
+    const deliver = (text) => {
+      let o; try { o = JSON.parse(text); } catch (e) { return; }
+      if (!o || typeof o !== 'object') return;
+      if (o._i) { if (seen.has(o._i)) return; seen.add(o._i); if (seen.size > 600) seen.delete(seen.values().next().value); }
+      onMessage(o, o.ts || Date.now());
+    };
+    // deux serveurs en parallèle : aucune divergence possible si l'un d'eux tombe chez un seul appareil
+    BROKERS.slice(0, 2).forEach((u) => links.push(connection(u, tb, deliver, refresh)));
+    // le troisième sert de relève s'il n'y a plus rien au bout de 12 s ; ntfy en dernier recours
+    setTimeout(() => {
+      if (closed || links.some((l) => l.up)) return;
+      links.push(connection(BROKERS[2], tb, deliver, refresh));
+      setTimeout(() => { if (closed || links.some((l) => l.up) || ntfy) return; ntfy = ntfyChannel(code, (t) => { ntfySeen = true; deliver(t); refresh(); }, (up) => { if (up) ntfySeen = true; refresh(); }); }, 6000);
+    }, 12000);
+    setTimeout(() => { if (!closed && !links.some((l) => l.up) && lastSt !== 'on') say('retry'); }, 4000);
     return {
       send(obj) {
-        return fetch(url, { method: 'POST', body: JSON.stringify(obj) })
-          .then((r) => { ok = r.ok; if (!r.ok) say('off'); return r.ok; })
-          .catch(() => { ok = false; say('off'); return false; });
+        const o = Object.assign({}, obj, { _i: rid() });
+        const text = JSON.stringify(o);
+        const topic = tb + '/' + (o.k || 'x') + (o.k === 'p' && o.id ? '/' + o.id : ''), retain = !!RETAIN[o.k];
+        const go = () => { let sent = false; links.forEach((l) => { if (l.publish(topic, text, retain)) sent = true; }); if (!sent && ntfy) sent = ntfy.publish(topic, text); return sent; };
+        if (go()) return Promise.resolve(true);
+        // pas encore connecté : on réessaie quelques secondes
+        return new Promise((res) => { let n = 0; const t = setInterval(() => { n++; if (go()) { clearInterval(t); res(true); } else if (n > 12) { clearInterval(t); say('off'); res(false); } }, 500); });
       },
-      close() { closed = true; if (es) es.close(); },
+      close() { closed = true; links.forEach((l) => l.close()); if (ntfy) ntfy.close(); },
     };
   }
   window.ValmontRelay = { open, newCode };
