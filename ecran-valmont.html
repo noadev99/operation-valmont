@@ -323,7 +323,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
     <div id="cScenes"></div>
     <button class="b red" id="sceneOff">Fermer la scène</button>
-    <p class="hint">Choisis qui joue et la difficulté, touche la situation : l'image « en train » s'affiche. Quand le joueur lance son dé, l'image passe toute seule à « réussite » ou « échec ». Les boutons En cours / Réussi / Raté servent à corriger.</p>
+    <p class="hint">Choisis qui joue et la difficulté, touche la situation : l'image « en train » s'affiche. Quand un dé est lancé (par le joueur dans son carnet, ou par toi avec « Lancer un dé »), l'image passe toute seule à « réussite » ou « échec ». Les boutons En cours / Réussi / Raté servent à corriger.</p>
   </div>
 
   <div class="card"><h3>Annonce plein écran</h3>
@@ -1654,6 +1654,14 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     s.seen[`${rq.floor}|${rq.room}`] = true; s.floor = rq.floor;
     logAdd(s, m.name + ' entre : ' + rr.name);
   }
+  /* un jet pendant qu'une scène « en train » est à l'écran : la télé affiche réussite ou échec toute seule */
+  function sceneJudge(s, d20, total, dd) {
+    if (!(s.scene && s.scene.on && s.scene.st === 'action')) return;
+    const used = dd || 12, win = d20 === 20 ? true : d20 === 1 ? false : total >= used, at0 = s.scene.at, st = win ? 'ok' : 'ko';
+    s.scene.wait = false;
+    feedAdd(s, 'Scène : ' + (win ? 'réussite' : 'échec') + ' affichée sur la télé dans quelques secondes' + (dd ? '.' : ' (difficulté 12 par défaut).'));
+    setTimeout(() => commit((x) => { if (x.scene && x.scene.on && x.scene.at === at0) sceneResult(x, st); }), 4200);
+  }
   const HANDLE = {
     b(s, d) { s.board[d.id] = { st: 'run', who: d.who }; },
     r(s, d) {
@@ -1673,13 +1681,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       logAdd(s, `${d.who} · ${d.skill} : ${total}${dd ? (win ? ' (réussi)' : ' (raté)') : ''}`);
       feedAdd(s, `${d.who} · ${d.skill} : dé ${d.d} + ${d.mod} = ${total}${dd ? ' contre ' + dd + ' → ' + verdict + (verdict === 'Raté de peu' ? ' : propose une réussite avec un coût' : '') : ' : dis-lui la difficulté'}`);
       if (d.d === 1) { s.alert = Math.min(10, s.alert + 1); logAdd(s, '1 naturel : alerte ' + s.alert); }
-      if (s.scene && s.scene.on && s.scene.wait) {
-        if (dd || d.d === 20 || d.d === 1) {
-          const at0 = s.scene.at, st = win ? 'ok' : 'ko'; s.scene.wait = false;
-          feedAdd(s, 'Scène : ' + (win ? 'réussite' : 'échec') + ' affichée sur la télé dans quelques secondes.');
-          setTimeout(() => commit((x) => { if (x.scene && x.scene.on && x.scene.at === at0) sceneResult(x, st); }), 4200);
-        } else feedAdd(s, 'Scène en attente : choisis une difficulté pour que la télé juge le jet.');
-      }
+      sceneJudge(s, d.d, total, dd);
     },
     g(s, d) {
       const rq = { id: d.mid || String(Date.now()), pid: d.pid, who: d.who, floor: d.floor, room: d.room, rn: d.rn, text: d.text, at: Date.now() };
@@ -2064,7 +2066,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if ($('cScenes') && window.ValmontScenes) {
       const tn = (s.team || []).map((m) => m.name);
       const sc = s.scene && s.scene.on ? s.scene : null, names = Object.fromEntries(ValmontScenes.situations.map((x) => [x.id, x.name]));
-      $('cScenes').innerHTML = `<div class="hint" style="margin:0 0 4px">1. Qui joue</div><div class="seg" style="margin-bottom:8px">${[['', 'Les deux'], ['a', 'Seul · ' + (tn[0] || 'A')], ['b', 'Seul · ' + (tn[1] || 'B')]].map(([k, l]) => `<button class="b sm ${sceneWho === k ? 'on go' : ''}" data-scwho="${k}">${esc(l)}</button>`).join('')}</div>` + `<div class="hint" style="margin:6px 0 4px">2. Difficulté (la télé juge le jet toute seule)</div><div class="seg" style="margin-bottom:8px">${[[null, 'Aucune'], [8, '8'], [12, '12'], [15, '15'], [18, '18']].map(([v, l]) => `<button class="b sm ${s.dd === v ? 'on go' : ''}" data-dd="${v}" type="button">${l}</button>`).join('')}</div>`
+      $('cScenes').innerHTML = `<div class="hint" style="margin:0 0 4px">1. Qui joue</div><div class="seg" style="margin-bottom:8px">${[['', 'Les deux'], ['a', 'Seul · ' + (tn[0] || 'A')], ['b', 'Seul · ' + (tn[1] || 'B')]].map(([k, l]) => `<button class="b sm ${sceneWho === k ? 'on go' : ''}" data-scwho="${k}">${esc(l)}</button>`).join('')}</div>` + `<div class="hint" style="margin:6px 0 4px">2. Difficulté (12 par défaut si tu n'en choisis pas)</div><div class="seg" style="margin-bottom:8px">${[[null, 'Aucune'], [8, '8'], [12, '12'], [15, '15'], [18, '18']].map(([v, l]) => `<button class="b sm ${s.dd === v ? 'on go' : ''}" data-dd="${v}" type="button">${l}</button>`).join('')}</div>`
         + `<div class="hint" style="margin:6px 0 4px">3. Touche la situation : l'image « en train » apparaît</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:10px">${ValmontScenes.situations.map((x) => `<button class="b sm ${sc && sc.sit === x.id ? 'on go' : ''}" data-scgo="${x.id}" type="button">${esc(x.name)}</button>`).join('')}</div>`
         + (sc ? `<div class="camrow"><span><b>${esc(names[sc.sit] || '')}</b> · ${sc.wait ? 'en attente du jet…' : sc.st === 'ok' ? 'réussite' : sc.st === 'ko' ? 'échec' : 'en cours'}</span><span class="seg">${[['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']].map(([k, l]) => `<button class="b sm ${sc.st === k ? 'on go' : ''}" data-scres="${k}" type="button">${l}</button>`).join('')}</span></div>` : '')
         + `<div class="hint" style="margin:8px 0 4px">Retour au plan après le résultat</div><div class="seg">${[[0, 'Jamais'], [8, '8 s'], [15, '15 s'], [30, '30 s']].map(([v, l]) => `<button class="b sm ${hideSec(s) === v ? 'on go' : ''}" data-schide="${v}" type="button">${l}</button>`).join('')}</div>`;
@@ -2279,7 +2281,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const m = member($('rWho').value);
     const who = m ? m.name : 'Le MJ';
     ValmontDice.create($('rOut'), { d, title: who + ' · ' + $('rSkill').value + (show ? '' : ' (en secret)'), mods: [{ label: $('rSkill').value, v: mod }], dd, size: 'sm', help: false });
-    if (show) commit((s) => { s.roll = { at: Date.now(), who: m ? m.name : 'Le MJ', skill: $('rSkill').value, d, mod, dd, total, verdict, win }; });
+    if (show) commit((s) => { s.roll = { at: Date.now(), who: m ? m.name : 'Le MJ', skill: $('rSkill').value, d, mod, dd, total, verdict, win }; sceneJudge(s, d, total, dd); });
   }
 
   route();
