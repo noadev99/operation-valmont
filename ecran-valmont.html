@@ -188,6 +188,17 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 .win { color: var(--green); } .lose { color: var(--red); }
 .hint { color: var(--muted); font-size: .85rem; margin: 0; }
 .console { max-width: 820px; }
+.ccols { display: grid; gap: 14px; }
+.ccol { display: grid; gap: 14px; align-content: start; min-width: 0; }
+/* grand écran : tableau de bord sur toute la largeur, trois colonnes qui défilent chacune de leur côté */
+@media (min-width: 1200px) {
+  .console { max-width: none; height: 100vh; height: 100dvh; padding-block: 12px; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; gap: 10px; }
+  .console .chead { margin: 0; }
+  .ccols { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
+  .ccol { overflow-y: auto; min-height: 0; padding: 0 6px 24px 0; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .ccol .cplan svg { min-width: 0; }
+}
+@media (min-width: 1700px) { .ccols { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr); } }
 .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .modes button { background: var(--panel2); color: var(--muted); border: 1px solid var(--line); padding: 10px 6px; font: 600 .85rem var(--mono); min-height: 44px; }
 .modes button.on { background: var(--blue); color: #06121f; border-color: var(--blue); }
@@ -236,8 +247,66 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   <div class="chead"><b>Console MJ</b><a class="b sm" href="#ecran" style="text-decoration:none">Voir l'écran</a></div>
   <p class="status" id="cstatus">Connexion…</p>
 
-  <div class="card"><h3><span>Salon</span><span id="cSalonSt"></span></h3><div id="cSalon"></div></div>
 
+
+
+
+
+
+
+
+  <style>.camrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,#333);flex-wrap:wrap}.camrow .seg,.seg{display:flex;gap:4px;flex-wrap:wrap}</style>
+  <div class="ccols">
+  <div class="ccol">
+  <div class="card board"><h3><span>Plateau</span><span id="cFloorName"></span></h3>
+    <div class="grid4" id="cFloors"></div>
+    <div class="modes" id="cModes" role="group" aria-label="Mode du plateau"></div>
+    <div class="chips" id="cChips"></div>
+    <div class="cplan" id="cPlan"></div>
+    <p class="hint" id="cModeHint"></p>
+    <div class="btns" id="cReveal"></div>
+    <h3 style="margin-top:14px"><span>Caméras de cet étage</span><small class="hint">une par une</small></h3>
+    <div id="cCamList"></div>
+  </div>
+  <div class="card"><h3><span>L'équipe</span><span id="cTeamCount"></span></h3>
+    <div id="cTeam"></div>
+    <form class="row" id="addForm" autocomplete="off">
+      <input id="newName" maxlength="18" placeholder="Nom de code" aria-label="Nom de code du braqueur">
+      <select id="newRole" aria-label="Rôle"></select>
+      <button class="b go" type="submit">Ajouter</button>
+    </form>
+  </div>
+  </div>
+  <div class="ccol">
+  <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
+    <div id="cScenes"></div>
+    <button class="b red" id="sceneOff">Fermer la scène</button>
+    <p class="hint">Choisis qui joue et la difficulté, touche la situation : l'image « en train » s'affiche. Le joueur lance son dé dans son carnet : le dé s'affiche sur la télé. Ensuite, soit tu valides l'image (le jet te propose réussite ou échec), soit elle passe toute seule si tu as choisi « Image automatique ».</p>
+  </div>
+  <div class="card"><h3><span>Intro du film</span><span id="cIntroNow"></span></h3>
+    <div class="btns"><button class="b go" data-intro="new" type="button">Nouvelle partie + intro</button><button class="b" data-intro="video" type="button">▶ Rejouer l'intro</button><button class="b" data-intro="poster" type="button">Montrer l'affiche</button><button class="b red" data-intro="off" type="button">Fermer</button></div>
+    <p class="hint"><b>Le soir de la partie :</b> touche « Nouvelle partie + intro ». Tout est remis à zéro (plan dans le brouillard, rien de découvert), puis la télé joue l'intro. Si la télé vient d'être ouverte, ce sont les joueurs qui touchent LANCER puis JOUER. Une minute de vidéo qui raconte le contexte (avec ta voix si tu l'as enregistrée sur <a href="voix.html" target="_blank" rel="noopener">la page des voix</a>), puis l'affiche du film. Active le son de la télé avant. Sur la télé, « Passer » ou Échap saute l'intro.</p>
+  </div>
+  <div class="card"><h3><span>Alerte</span><span id="cAlertTxt"></span></h3><div class="grid11" id="cAlert"></div>
+    <p class="hint">Scène entière sans incident et alerte sous 7 : baisse-la de 1, le calme revient.</p></div>
+  <div class="card"><h3>Heure de la nuit</h3>
+    <div class="clockrow"><b id="cClock">21:30</b>
+      <div class="btns"><button class="b" data-time="-15">−15 min</button><button class="b" data-time="5">+5</button><button class="b" data-time="15">+15</button><button class="b" data-time="60">+1 h</button></div></div>
+  </div>
+  <div class="card"><h3><span>Repérage (tableau d'enquête)</span><span id="cPrep"></span></h3>
+    <div class="btns"><button class="b" data-prep="10">Ouvrir (10 min max)</button><button class="b go" data-prep="15">Ouvrir (15 min max)</button><button class="b" data-prep="30">Ouvrir (30 min max)</button><button class="b red" data-prep="0">Fermer</button></div>
+    <p class="hint">Chaque joueur a 5 jetons d'enquête : une piste = 1 jeton, résolue tout de suite. Le repérage finit quand ses jetons sont dépensés. Le temps max est juste un garde-fou. La télé affiche le tableau pendant ce temps.</p>
+  </div>
+  <div class="card"><h3><span>Butin sorti</span><span id="cLoot"></span></h3>
+    <div class="btns">
+      <button class="b" data-loot="50000">+ lingot</button><button class="b" data-loot="30000">+ sac de billets</button><button class="b" data-loot="80000">+ collier</button><button class="b" data-loot="15000">+ casier</button><button class="b red" data-loot="-50000">− 50 000</button>
+    </div>
+    <form class="row" id="lootForm"><input id="lootAmt" type="number" inputmode="numeric" placeholder="Montant libre (€)" aria-label="Montant libre"><button class="b" type="submit">Ajouter</button></form>
+  </div>
+  </div>
+  <div class="ccol">
+  <div class="card"><h3>Fil du MJ <small class="hint">(toi seul)</small></h3><div class="logitems" id="cFeed"></div></div>
+  <div class="card"><h3><span>Demandes des joueurs</span><span id="cReqN"></span></h3><div id="cReq"></div></div>
   <div class="card"><h3><span>Automatismes</span><span id="cAuNow"></span></h3>
     <div class="btns" id="cClockBtns"></div>
     <div class="btns" id="cAu"></div>
@@ -249,54 +318,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <div class="btns" id="cDD"></div>
     <p class="hint">Les jets des joueurs arrivent tout seuls sur la télé. Avec une difficulté choisie, ils sont jugés tout seuls.</p>
   </div>
-
-  <div class="card"><h3><span>Demandes des joueurs</span><span id="cReqN"></span></h3><div id="cReq"></div></div>
-
-  <div class="card"><h3>Fil du MJ <small class="hint">(toi seul)</small></h3><div class="logitems" id="cFeed"></div></div>
-
-  <style>.camrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,#333);flex-wrap:wrap}.camrow .seg,.seg{display:flex;gap:4px;flex-wrap:wrap}</style>
-  <div class="card board"><h3><span>Plateau</span><span id="cFloorName"></span></h3>
-    <div class="grid4" id="cFloors"></div>
-    <div class="modes" id="cModes" role="group" aria-label="Mode du plateau"></div>
-    <div class="chips" id="cChips"></div>
-    <div class="cplan" id="cPlan"></div>
-    <p class="hint" id="cModeHint"></p>
-    <div class="btns" id="cReveal"></div>
-    <h3 style="margin-top:14px"><span>Caméras de cet étage</span><small class="hint">une par une</small></h3>
-    <div id="cCamList"></div>
-  </div>
-
-  <div class="card"><h3><span>Repérage (tableau d'enquête)</span><span id="cPrep"></span></h3>
-    <div class="btns"><button class="b" data-prep="10">Ouvrir (10 min max)</button><button class="b go" data-prep="15">Ouvrir (15 min max)</button><button class="b" data-prep="30">Ouvrir (30 min max)</button><button class="b red" data-prep="0">Fermer</button></div>
-    <p class="hint">Chaque joueur a 5 jetons d'enquête : une piste = 1 jeton, résolue tout de suite. Le repérage finit quand ses jetons sont dépensés. Le temps max est juste un garde-fou. La télé affiche le tableau pendant ce temps.</p>
-  </div>
-
-
-  <div class="card"><h3>Heure de la nuit</h3>
-    <div class="clockrow"><b id="cClock">21:30</b>
-      <div class="btns"><button class="b" data-time="-15">−15 min</button><button class="b" data-time="5">+5</button><button class="b" data-time="15">+15</button><button class="b" data-time="60">+1 h</button></div></div>
-  </div>
-
-  <div class="card"><h3><span>Alerte</span><span id="cAlertTxt"></span></h3><div class="grid11" id="cAlert"></div>
-    <p class="hint">Scène entière sans incident et alerte sous 7 : baisse-la de 1, le calme revient.</p></div>
-
-
-  <div class="card"><h3><span>L'équipe</span><span id="cTeamCount"></span></h3>
-    <div id="cTeam"></div>
-    <form class="row" id="addForm" autocomplete="off">
-      <input id="newName" maxlength="18" placeholder="Nom de code" aria-label="Nom de code du braqueur">
-      <select id="newRole" aria-label="Rôle"></select>
-      <button class="b go" type="submit">Ajouter</button>
-    </form>
-  </div>
-
-  <div class="card"><h3><span>Butin sorti</span><span id="cLoot"></span></h3>
-    <div class="btns">
-      <button class="b" data-loot="50000">+ lingot</button><button class="b" data-loot="30000">+ sac de billets</button><button class="b" data-loot="80000">+ collier</button><button class="b" data-loot="15000">+ casier</button><button class="b red" data-loot="-50000">− 50 000</button>
-    </div>
-    <form class="row" id="lootForm"><input id="lootAmt" type="number" inputmode="numeric" placeholder="Montant libre (€)" aria-label="Montant libre"><button class="b" type="submit">Ajouter</button></form>
-  </div>
-
+  <div class="card"><h3><span>Salon</span><span id="cSalonSt"></span></h3><div id="cSalon"></div></div>
   <details class="card"><summary style="cursor:pointer;font-weight:700">Lancer un dé à la place d'un joueur <small class="hint">(les joueurs lancent eux-mêmes dans leur carnet)</small></summary>
     <div class="row">
       <select id="rWho" aria-label="Qui lance"></select>
@@ -309,7 +331,6 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <div class="btns"><button class="b go" id="rollShow">Lancer et afficher</button><button class="b" id="rollSecret">Lancer en secret</button></div>
     <div class="rollout" id="rOut"><span class="hint">Le bonus se remplit avec la compétence du rôle. Ajoute +3 si le joueur dépense 1 énergie.</span></div>
   </details>
-
   <details class="card"><summary style="cursor:pointer;font-weight:700">Sons d'ambiance <small class="hint">(automatiques : gala, nuit, tension selon l'heure, le lieu et l'alerte)</small> <span id="cSndNow"></span></summary>
     <p class="hint">Les sons sortent de l'ordi de la télé. Une seule fois, touche « Activer le son » sur l'écran de la télé.</p>
     <div class="btns" id="cAmb"></div>
@@ -319,32 +340,20 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <p class="hint">Sons automatiques : le dé qui roule, et l'alarme quand l'alerte atteint 7.</p>
     <button class="b sm" data-ambauto="1" type="button">Remettre l'automatique</button>
   </details>
-
-  <div class="card"><h3><span>Intro du film</span><span id="cIntroNow"></span></h3>
-    <div class="btns"><button class="b go" data-intro="new" type="button">Nouvelle partie + intro</button><button class="b" data-intro="video" type="button">▶ Rejouer l'intro</button><button class="b" data-intro="poster" type="button">Montrer l'affiche</button><button class="b red" data-intro="off" type="button">Fermer</button></div>
-    <p class="hint"><b>Le soir de la partie :</b> touche « Nouvelle partie + intro ». Tout est remis à zéro (plan dans le brouillard, rien de découvert), puis la télé joue l'intro. Si la télé vient d'être ouverte, ce sont les joueurs qui touchent LANCER puis JOUER. Une minute de vidéo qui raconte le contexte (avec ta voix si tu l'as enregistrée sur <a href="voix.html" target="_blank" rel="noopener">la page des voix</a>), puis l'affiche du film. Active le son de la télé avant. Sur la télé, « Passer » ou Échap saute l'intro.</p>
-  </div>
-
-  <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
-    <div id="cScenes"></div>
-    <button class="b red" id="sceneOff">Fermer la scène</button>
-    <p class="hint">Choisis qui joue et la difficulté, touche la situation : l'image « en train » s'affiche. Le joueur lance son dé dans son carnet : le dé s'affiche sur la télé. Ensuite, soit tu valides l'image (le jet te propose réussite ou échec), soit elle passe toute seule si tu as choisi « Image automatique ».</p>
-  </div>
-
   <div class="card"><h3>Annonce plein écran</h3>
     <div class="btns" id="quickBanner"></div>
     <form class="row" id="bannerForm" autocomplete="off"><input id="bannerInput" maxlength="60" placeholder="Texte libre" aria-label="Texte de l'annonce"><button class="b" type="submit">Afficher</button></form>
     <button class="b red" id="bannerOff">Masquer l'annonce</button>
   </div>
-
   <div class="card"><h3>Fin de partie</h3>
     <p class="hint">Affiche sur la télé le titre de l'équipe et le butin.</p>
     <div class="btns"><button class="b go" data-end="1" type="button">Terminer la partie</button></div>
   </div>
-
   <div class="card"><h3>Partie</h3>
     <p class="hint">Remet tout à zéro : plan dans le brouillard, caméras et gardes cachés, heure 21h30, alerte 0, butin, journal et scènes effacés. L'équipe est gardée (PV et énergie remis au maximum).</p>
     <div class="btns"><button class="b red" id="resetBtn">Nouvelle partie</button></div>
+  </div>
+  </div>
   </div>
 </div>
 
