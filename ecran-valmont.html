@@ -192,6 +192,10 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 .piece .pz-sec { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
 .piece .pz-sec > b { font: 600 .72rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .piece .pz-voir { font-size: 1rem; line-height: 1.5; margin: 0; }
+.piece .pz-door { padding: 8px 10px; background: var(--panel2); border-left: 3px solid var(--green); line-height: 1.45; }
+.piece .pz-door.badge { border-left-color: var(--blue); } .piece .pz-door.serrure { border-left-color: var(--amber); } .piece .pz-door.special { border-left-color: var(--red); }
+.piece .pz-tag { font: 700 .72rem var(--mono); letter-spacing: .12em; margin-right: 8px; padding: 2px 6px; background: rgba(255,255,255,.08); }
+.piece .pz-find { margin: 0; padding-left: 18px; display: grid; gap: 3px; } .piece .pz-find li { font-size: .92rem; }
 .piece .pz-act { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 6px 8px; background: var(--panel2); border-left: 3px solid var(--amber); }
 .piece .pz-act b { font-size: .95rem; } .piece .pz-act code { font: 600 .8rem var(--mono); color: var(--amber); white-space: nowrap; }
 .piece .pz-act span { grid-column: 1 / -1; color: var(--muted); font-size: .88rem; }
@@ -1465,6 +1469,45 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       faire: [['Monter ou descendre', 'Discrétion 13', 'Sinon elle grince : alerte +1.'], ['Neutraliser Jo', 'Discrétion 14 (par derrière)', 'Le toit est libre ; il manquera à la relève (alerte +2 à sa ronde suivante).']],
       si: [['« Jo fume quand ? »', 'Toutes les 30 minutes, 5 minutes à chaque fois.']] },
   };
+  /* ---------- ACCÈS : comment entrer dans chaque pièce, et ce qu'il y a à y trouver ----------
+     type : 'libre' (porte ouverte), 'badge', 'serrure', 'special'
+     badge : 'service' (entretien), 'securite' (gardes, PC sécurité), 'direction' (Hélène, Paul) */
+  window.ValmontBadges = {
+    service: { nom: 'Badge de service (entretien)', ou: 'Marco (s\'il est recruté) · poche d\'un casier des vestiaires R4 (Discrétion 10) · « Faux badge employé » (portes simples)' },
+    securite: { nom: 'Badge de sécurité', ou: 'Fabrice (PC sécurité) et les gardes Nadia, Didier, Yasmine : les frôler en Discrétion 12 avec le « Cloneur de badge »' },
+    direction: { nom: 'Badge de direction', ou: 'Hélène (cloneur, Discrétion 12) · Paul Ferrand (le saouler au bar F3, ou le frôler avec le cloneur)' },
+  };
+  window.ValmontAcces = {
+    S1: { type: 'special', acces: 'Porte blindée : code à 8 chiffres + empreinte d\'Hélène, ou perceuse thermique (Technique 15, 3 réussites), ou attendre 6h00.', trouver: ['40 lingots d\'or (50 000 € pièce, 12 kg)', '120 casiers (Technique 12) : bijoux, titres, liquide', 'Casier 117 (étiquette rouge) : la clé USB du Notaire'] },
+    S2: { type: 'badge', badge: 'direction', acces: 'Porte du sas fermée : badge de direction, ou Technique 14. Ensuite, les lasers (Discrétion 18).', trouver: ['Rien : c\'est le dernier obstacle avant la chambre forte'] },
+    S3: { type: 'special', acces: 'Rideau métallique de la rampe : Muscle 15, ou télécommande du PC sécurité (R6). La porte intérieure est ouverte.', trouver: ['2 voitures de service (Technique 12 pour démarrer)', 'L\'emplacement du fourgon blindé'] },
+    S4: { type: 'libre', acces: 'Porte ouverte.', trouver: ['Armoires électriques : couper le courant (Technique 12)', 'Groupe électrogène (le saboter : Technique 15)'] },
+    S5: { type: 'libre', acces: 'Porte ouverte.', trouver: ['Plan des conduits de 1962 (révèle la gaine du toit)', 'Le dossier des dettes de Paul Ferrand'] },
+    S6: { type: 'libre', acces: 'Porte ouverte, mais Didier et Yasmine sont dedans.', trouver: ['Trousseau de clés du sous-sol', 'Une radio', 'Un râtelier (matraques)'] },
+    S7: { type: 'special', acces: 'Porte ouverte. La grille d\'égout est scellée : Muscle 14 ou perceuse.', trouver: ['Sortie par les égouts (vers le canal)', 'Arrivée de la gaine de ventilation du toit'] },
+    R1: { type: 'libre', acces: 'Ouvert pendant le gala pour les invités. Sinon la porte tambour : Muscle 12, alerte +3.', trouver: ['Distributeurs et guichets (vides)', 'Nadia, la garde du hall, et 3 caméras'] },
+    R2: { type: 'libre', acces: 'Porte ouverte. Le tiroir est fermé : Technique 10 (crochets +2).', trouver: ['Reconnaissances de dettes de Paul (Baratin +3 contre lui)', 'Mails de menaces du Cercle Saint-Roch (ordinateur, Technique 14)'] },
+    R3: { type: 'libre', acces: 'Porte ouverte.', trouver: ['Ordinateurs reliés au réseau (Technique 14) : horaires et positions des gardes'] },
+    R4: { type: 'libre', acces: 'Porte ouverte. Les casiers : Technique 8.', trouver: ['Uniformes d\'entretien et de garde (+3 Baratin, pas sur Kessler)', 'Un badge de service oublié (Discrétion 10)'] },
+    R5: { type: 'badge', badge: 'securite', acces: 'Porte à badge de sécurité, ou Technique 13. 1 caméra dans la pièce.', trouver: ['180 000 € en 6 sacs (1 sur 3 piégé par une cartouche d\'encre)', 'Machine à compter les billets'] },
+    R6: { type: 'badge', badge: 'securite', acces: 'Porte à badge de sécurité, Technique 14, ou entrer pendant la relève de 00h30 (la pièce est vide 5 minutes).', trouver: ['Contrôle des portes et du rideau du quai (ouvre tout)', 'Mur d\'écrans : effacer les enregistrements (Technique 12)', 'Fabrice, de garde'] },
+    R7: { type: 'badge', badge: 'service', acces: 'Porte de la ruelle : badge de service + serrure, ou Technique 13. Ouverte de 21h à 22h (livraison du traiteur).', trouver: ['Chariots à nappe longue (cachette)', 'Caisses de champagne', 'Une tenue de serveur'] },
+    F1: { type: 'libre', acces: 'Avec costume et invitation : libre. Sinon Baratin 12.', trouver: ['La coupe de champagne d\'Hélène (empreinte, Discrétion 12)', '60 invités, un quatuor, 2 agents privés', 'Une caméra au-dessus de l\'entrée'] },
+    F2: { type: 'libre', acces: 'Porte ouverte.', trouver: ['Post-it avec le mot de passe du PC sécurité (fouille, Technique 12)'] },
+    F3: { type: 'libre', acces: 'Ouvert (c\'est le gala).', trouver: ['Le barman : position d\'Hélène, de Kessler (Baratin 10)', 'Paul Ferrand dès 23h : 4 derniers chiffres du code (Baratin 12, ou 8 avec ses dettes)', 'Le badge de direction de Paul (le saouler)'] },
+    F4: { type: 'badge', badge: 'securite', acces: 'Porte à badge de sécurité (ou celui de Marco, ou cloné), ou Technique 15. 1 caméra.', trouver: ['Piratage (Technique 15, ordinateur +3) : couper l\'alarme silencieuse OU boucler les caméras 30 min'] },
+    F5: { type: 'libre', acces: 'Porte ouverte (le traiteur s\'agite).', trouver: ['Chariots (cachette)', 'Tenue de serveur'] },
+    F6: { type: 'libre', acces: 'Porte ouverte.', trouver: ['Fenêtre vers la façade nord : grappin vers le toit (Muscle 12)'] },
+    F7: { type: 'badge', badge: 'direction', acces: 'Porte fermée : badge de direction, ou crochetage Technique 12 (crochets +2). Hélène y monte seule à 23h20.', trouver: ['Coffre derrière le tableau (Technique 15, lampe UV +3)', 'Les 4 premiers chiffres du code', 'Le collier d\'Hélène (80 000 €)'] },
+    T1: { type: 'special', acces: 'Verrière : découper un panneau (Discrétion 12 avec une ventouse), puis rappel (Discrétion 13).', trouver: ['Descente vers le grand hall (R1)'] },
+    T2: { type: 'serrure', acces: 'Porte du cabanon avec alarme de contact : Technique 12, sinon alerte +2.', trouver: ['Escalier vers tous les étages', '1 caméra tournée vers le toit'] },
+    T3: { type: 'libre', acces: 'À l\'air libre.', trouver: ['Bonne cachette (sauf pendant la ronde de 2h00)'] },
+    T4: { type: 'special', acces: 'Grille vissée : démontage Technique 8 (outils). Une personne à la fois, pas de sac plein.', trouver: ['Gaine vers la chaufferie (S7), 3 jets de Discrétion 13'] },
+    T5: { type: 'libre', acces: 'À l\'air libre.', trouver: ['Antenne et parabole : brouiller les radios des gardes 20 min (Technique 14)'] },
+    T6: { type: 'libre', acces: 'À l\'air libre.', trouver: ['Le toit voisin (3 m plus haut, 6 m) : tyrolienne, ou saut (Muscle 16)'] },
+    T7: { type: 'libre', acces: 'À l\'air libre, échelle de secours (Discrétion 13, sinon elle grince : alerte +1).', trouver: ['Jo, qui fume toutes les 30 minutes'] },
+  };
+  window.ValmontPortesNote = 'Imprévu « Kessler change les codes » : les badges volés ou clonés ne marchent plus, il reste le crochetage (Technique). Alerte 7 et plus : toutes les portes à badge sont verrouillées.';
 })();
 
 </script>
@@ -2690,10 +2733,12 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (!pieceShown && occ.length) pieceShown = occ[0][0];
     $('pieceTabs').innerHTML = occ.map(([k, l]) => `<button class="b sm ${k === pieceShown ? 'on go' : ''}" data-piece="${k}" type="button">${esc(l)}</button>`).join('');
     if (!pieceShown) return;
-    const [fl, id] = pieceShown.split('|'), z = R[id], f = P.floors.find((x) => x.key === fl), rm = P.info(fl).rooms.find((r) => r.id === id);
+    const [fl, id] = pieceShown.split('|'), acc = (window.ValmontAcces || {})[id], z = R[id], f = P.floors.find((x) => x.key === fl), rm = P.info(fl).rooms.find((r) => r.id === id);
     $('pieceWhere').textContent = f ? f.level + ' · ' + f.name : '';
     if (!z || !rm) { $('pieceBody').innerHTML = N[id] ? `<p class="pz-voir">${N[id]}</p>` : ''; return; }
     $('pieceBody').innerHTML = `<div class="pz-head">${id} · ${esc(rm.name)}<small>${s.seen[fl + '|' + id] ? 'découverte' : 'pas encore découverte'}</small></div>
+      ${acc ? `<div class="pz-sec"><b>Accès</b><div class="pz-door ${acc.type}"><span class="pz-tag">${({ libre: 'LIBRE', badge: 'BADGE ' + ((window.ValmontBadges && ValmontBadges[acc.badge]) ? { service: 'SERVICE', securite: 'SÉCURITÉ', direction: 'DIRECTION' }[acc.badge] : ''), serrure: 'SERRURE', special: 'SPÉCIAL' })[acc.type]}</span>${esc(acc.acces)}</div></div>
+      <div class="pz-sec"><b>À trouver ici</b><ul class="pz-find">${acc.trouver.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
       <div class="pz-sec"><b>Ce qu'ils voient</b><p class="pz-voir">${esc(z.voir)}</p></div>
       <div class="pz-sec"><b>Ce qu'ils peuvent faire</b>${z.faire.map(([a, j, r]) => `<div class="pz-act"><b>${esc(a)}</b><code>${esc(j)}</code><span>${esc(r)}</span></div>`).join('')}</div>
       ${z.si && z.si.length ? `<div class="pz-sec"><b>S'ils demandent</b>${z.si.map(([q, r]) => `<div class="pz-q"><b>${esc(q)}</b><p>${esc(r)}</p></div>`).join('')}</div>` : ''}`;
