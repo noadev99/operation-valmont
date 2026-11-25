@@ -189,6 +189,15 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 .hint { color: var(--muted); font-size: .85rem; margin: 0; }
 .console { max-width: 820px; }
 .ccols { display: grid; gap: 14px; }
+.piece .pz-sec { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
+.piece .pz-sec > b { font: 600 .72rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.piece .pz-voir { font-size: 1rem; line-height: 1.5; margin: 0; }
+.piece .pz-act { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 6px 8px; background: var(--panel2); border-left: 3px solid var(--amber); }
+.piece .pz-act b { font-size: .95rem; } .piece .pz-act code { font: 600 .8rem var(--mono); color: var(--amber); white-space: nowrap; }
+.piece .pz-act span { grid-column: 1 / -1; color: var(--muted); font-size: .88rem; }
+.piece .pz-q { padding: 4px 0; } .piece .pz-q b { color: var(--blue); font-size: .92rem; } .piece .pz-q p { margin: 2px 0 0; font-size: .9rem; color: var(--fg); }
+.piece .pz-head { font: 700 1.15rem var(--body); } .piece .pz-head small { color: var(--muted); font: 500 .8rem var(--mono); margin-left: 6px; }
+.roomnotes .rn { cursor: pointer; } .roomnotes .rn:hover { background: rgba(255,255,255,.03); }
 .roomnotes summary { cursor: pointer; font: 600 .74rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 10px; }
 .roomnotes .rn { border-top: 1px solid var(--line); padding: 8px 0; }
 .roomnotes .rn b { font: 700 .9rem var(--body); color: var(--fg); }
@@ -287,6 +296,10 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   </div>
   </div>
   <div class="ccol">
+  <div class="card piece" id="pieceCard"><h3><span>Fiche de la pièce</span><span id="pieceWhere"></span></h3>
+    <div class="btns" id="pieceTabs"></div>
+    <div id="pieceBody"><p class="hint">Quand un pion entre dans une pièce, sa fiche s'ouvre ici : ce qu'il y a, ce qu'ils peuvent faire, quoi répondre. Tu peux aussi toucher une pièce dans la liste sous le plan.</p></div>
+  </div>
   <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
     <div id="cScenes"></div>
     <button class="b red" id="sceneOff">Fermer la scène</button>
@@ -1359,6 +1372,103 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
 </script>
 <script>
+/* Fiche détaillée de chaque pièce, pour le MJ : ce qu'on y voit, ce qu'on peut y faire (jet → résultat),
+   et quoi répondre aux questions des joueurs. Les difficultés suivent les règles du dossier MJ. */
+(function () {
+  window.ValmontRooms = {
+    /* ---------- SOUS-SOL ---------- */
+    S1: { voir: 'Une porte blindée ronde de 20 tonnes. Derrière : 6 palettes de lingots (40 lingots), 120 casiers numérotés, un néon froid. Le casier 117 a une étiquette rouge.',
+      faire: [['Ouvrir avec le code + l\'empreinte', 'aucun jet', 'La porte s\'ouvre en silence.'], ['Percer la porte', 'Technique 15, 3 réussites', 'Ouverte. Chaque jet raté : alerte +1 (le bruit).'], ['Attendre 6h00', 'aucun', 'Elle s\'ouvre seule… mais le fourgon et ses convoyeurs arrivent.'], ['Ouvrir un casier', 'Technique 12', 'Bijoux, titres, liquide (10 000 à 30 000 €). Le 117 : la clé USB.'], ['Prendre des lingots', 'aucun', '50 000 € pièce, 12 kg : 2 par sac maximum, sinon −2 en Discrétion.']],
+      si: [['« Il y a une alarme ? »', 'Oui, silencieuse, si on ouvre sans le code. Ils ne l\'entendent pas : l\'alerte passe à 7. Désactivable depuis les serveurs (F4).'], ['« Qu\'est-ce qu\'il y a sur la clé USB ? »', 'Chiffrée. Le Notaire ne veut pas qu\'ils la lisent (et il compte les livrer à la police).']] },
+    S2: { voir: 'Un sas étroit devant la porte blindée. Une grille de faisceaux laser rouges, invisible sans fumée ni lunettes.',
+      faire: [['Traverser les lasers', 'Discrétion 18 (lunettes thermiques +3)', 'Passé. Échec : alerte +3, la porte du sas se verrouille.'], ['Couper le courant en S4', 'Technique 12 (dans S4)', 'Lasers éteints 3 tours.'], ['Fumée, poudre, spray', 'aucun', 'Les faisceaux deviennent visibles : +3 au jet de Discrétion.']],
+      si: [['« On voit les lasers ? »', 'Non, à l\'œil nu, rien. Juste de petits boîtiers aux murs. Seulement s\'ils ont trouvé le dossier RH ou s\'ils ont des lunettes.']] },
+    S3: { voir: 'Le parking du sous-sol : 4 piliers, 2 voitures de service, l\'emplacement du fourgon et un rideau métallique sur la rampe. Lucas somnole sur une chaise.',
+      faire: [['Passer derrière Lucas', 'Discrétion 10', 'Il ne bronche pas.'], ['Ouvrir le rideau à la main', 'Muscle 15', 'Ouvert, très bruyant : alerte +1.'], ['Ouvrir le rideau depuis le PC sécurité (R6)', 'aucun', 'Ouvert en silence.'], ['Voler une voiture de service', 'Technique 12', 'Une sortie rapide… si le rideau est ouvert.']],
+      si: [['« Le fourgon arrive quand ? »', 'À 6h00, avec deux convoyeurs armés.'], ['« Lucas est armé ? »', 'Une matraque et une radio. Il dort à moitié.']] },
+    S4: { voir: 'Le local électrique : armoires, transformateur qui ronronne, un groupe électrogène dans un coin.',
+      faire: [['Couper le courant', 'Technique 12', 'Caméras et lasers coupés 3 tours, puis le groupe électrogène repart. Alerte +1.'], ['Saboter le groupe électrogène', 'Technique 15', 'La coupure dure 10 tours au lieu de 3. Alerte +2.']],
+      si: [['« Le noir complet ? »', 'Oui, dans toute la banque. Le gala hurle, les gardes sortent leurs lampes.']] },
+    S5: { voir: 'Des rayonnages d\'archives jusqu\'au plafond, de la poussière, une lampe de bureau.',
+      faire: [['Fouiller 1 tour', 'Technique 12', 'Au choix : le plan des conduits (révèle la gaine du toit) ou le dossier des dettes de Paul Ferrand.']],
+      si: [['« Il y a des plans de la banque ? »', 'Oui, de 1962. La gaine de ventilation descend du toit jusqu\'à la chaufferie.']] },
+    S6: { voir: 'Le poste de garde : Didier et Yasmine jouent aux cartes. Un râtelier, une radio, un trousseau de clés du sous-sol au mur.',
+      faire: [['Les neutraliser sans bruit', 'Discrétion 14 par garde (par derrière)', 'Le sous-sol est libre jusqu\'à la ronde de 2h00.'], ['Les baratiner', 'Baratin 12 (uniforme de garde +3)', 'Ils vous prennent pour des collègues.'], ['Voler le trousseau', 'Discrétion 12', 'Ouvre toutes les portes simples du sous-sol.']],
+      si: [['« Ils sont combien ? »', 'Deux. 6 PV chacun, une matraque chacun.']] },
+    S7: { voir: 'La chaufferie : deux grosses chaudières qui grondent. Une grille d\'égout au sol. La gaine de ventilation du toit arrive ici.',
+      faire: [['Se cacher ou parler ici', 'aucun', '+2 en Discrétion : le bruit couvre tout.'], ['Ouvrir la grille d\'égout', 'Muscle 14 (ou perceuse)', 'Passage vers les égouts : entrée ou fuite.']],
+      si: [['« Les égouts mènent où ? »', 'Au canal, 400 m plus loin. Sombre, de l\'eau jusqu\'aux genoux.']] },
+    /* ---------- REZ-DE-CHAUSSÉE ---------- */
+    R1: { voir: 'Le grand hall : guichets en marbre, file d\'attente, banque d\'accueil, distributeurs. La verrière 12 m plus haut. Nadia fait le tour, 3 caméras.',
+      faire: [['Traverser sans être vu', 'Discrétion 12', 'Passé. Échec : Nadia les voit, alerte +1.'], ['Passer sous les caméras', 'Discrétion 12 par caméra', 'Sinon : alerte +1 (+2 avec masque ou sac).'], ['Forcer la porte tambour', 'Muscle 12', 'Ouverte, mais alerte +3.']],
+      si: [['« Il y a de l\'argent aux guichets ? »', 'Non, tout est rangé en salle de comptage (R5) le soir.'], ['« Où est Nadia ? »', 'Elle tourne dans le hall : montre-la sur le plan si elle est révélée.']] },
+    R2: { voir: 'Le bureau de Paul Ferrand : un bureau en désordre, un cadre photo, une bouteille de whisky entamée, un tiroir fermé.',
+      faire: [['Ouvrir le tiroir', 'Technique 10 (crochets +2)', 'Ses reconnaissances de dettes de jeu : Baratin +3 contre Paul (DD 8 pour le faire parler).'], ['Fouiller l\'ordinateur', 'Technique 14', 'Des mails de menaces du Cercle Saint-Roch.']],
+      si: [['« Paul est là ? »', 'Non, il est au gala, au bar du 1er (F3) dès 23h.'], ['« Le code est écrit quelque part ? »', 'Non. Paul connaît les 4 derniers chiffres par cœur. Il faut le faire parler.']] },
+    R3: { voir: 'L\'espace des conseillers : quatre postes de travail, des écrans en veille, des plantes.',
+      faire: [['Pirater un poste', 'Technique 14', 'Horaires des rondes et position des gardes : révèle les gardes de l\'étage.']],
+      si: [['« Il y a du liquide ? »', 'Non, juste des dossiers clients.']] },
+    R4: { voir: 'Les vestiaires du personnel : casiers métalliques, uniformes d\'entretien et de garde, un miroir.',
+      faire: [['Ouvrir les casiers', 'Technique 8', 'Uniformes : +3 en Baratin face aux PNJ qui ne les connaissent pas (pas Kessler).'], ['Se changer', 'aucun', '1 tour.']],
+      si: [['« Il y a des badges ? »', 'Un badge d\'entretien oublié dans une poche (Discrétion 10 pour fouiller vite) : ouvre R7.']] },
+    R5: { voir: 'La salle de comptage : table, machine à compter les billets, 6 sacs de billets. Porte à badge, 1 caméra.',
+      faire: [['Ouvrir la porte', 'Badge, ou Technique 13', 'Entrés.'], ['Prendre les sacs', 'aucun', '180 000 € en 6 sacs… mais 1 sac sur 3 contient une cartouche d\'encre (lance 1d6, sur 1-2 : billets tachés, sans valeur).']],
+      si: [['« On peut repérer les sacs piégés ? »', 'Technique 12 : une petite bosse dans la doublure. Réussi : ils évitent les sacs piégés.']] },
+    R6: { voir: 'Le PC sécurité : un mur d\'écrans, le contrôle des portes et du rideau du quai. Fabrice, de garde, boit un café.',
+      faire: [['Prendre le PC', 'Neutraliser Fabrice (Discrétion 14) ou entrer pendant la relève de 00h30', 'Les caméras ne font plus monter l\'alerte, toutes les portes s\'ouvrent, le rideau du quai aussi.'], ['Effacer les enregistrements', 'Technique 12', 'Plus de preuve : la police arrivera moins vite (+2 tours).']],
+      si: [['« Fabrice est seul ? »', 'Oui. À 00h30, il part 5 minutes pour la relève : le PC est vide.']] },
+    R7: { voir: 'Le couloir de service : chariots du traiteur, caisses de champagne. Une porte donne sur la ruelle.',
+      faire: [['Entrer par la ruelle', 'Ouverte de 21h à 22h (livraison), sinon Technique 13', 'Dedans, sans bruit.'], ['Se cacher dans un chariot', 'Discrétion 10', 'Un chariot à nappe longue cache une personne ou un sac.']],
+      si: [['« Le traiteur nous voit ? »', 'Le chef est débordé : avec une tenue de serveur, personne ne pose de question.']] },
+    /* ---------- 1ER ÉTAGE ---------- */
+    F1: { voir: 'Le gala : 60 invités en tenue de soirée, un quatuor à cordes, un buffet, des serveurs. Deux agents privés tournent autour de la mezzanine.',
+      faire: [['Circuler', 'Sans jet avec costume + invitation, sinon Baratin 12', 'Ils se fondent dans la foule.'], ['Voler la coupe d\'Hélène', 'Discrétion 12', 'L\'empreinte est sur le verre (puis faux pouce : Technique 12).'], ['Créer une diversion', 'Baratin ou Muscle 10', 'Tous les regards ailleurs pendant 2 tours.']],
+      si: [['« Hélène est où ? »', 'Elle serre des mains au centre. Elle monte à son bureau (F7) à 23h20, discours à 23h30.'], ['« Il y a des caméras ? »', 'Une seule, au-dessus de l\'entrée de la salle.']] },
+    F2: { voir: 'Un open space plongé dans le noir : bureaux, écrans éteints. 1 caméra.',
+      faire: [['Fouiller les bureaux', 'Technique 12', 'Sous un clavier : un post-it avec le mot de passe du PC sécurité (R6).']],
+      si: [['« Quelqu\'un ? »', 'Personne. Le bruit du gala filtre par la porte.']] },
+    F3: { voir: 'Le bar : comptoir en L, salon de fauteuils en cuir. Un barman bavard. Paul Ferrand y boit dès 23h.',
+      faire: [['Faire parler le barman', 'Baratin 10', 'Il sait qui est où : position d\'Hélène, de Kessler, des agents.'], ['Faire parler Paul', 'Baratin 12, ou 8 avec ses reconnaissances de dettes', 'Les 4 derniers chiffres du code.'], ['Saouler Paul', 'Baratin 10, 2 tours', 'Il s\'endort : on peut le fouiller (son badge).']],
+      si: [['« Paul est comment ? »', 'Nerveux, il boit trop, il regarde son téléphone. Il parle d\'argent si on le lance.']] },
+    F4: { voir: 'La salle des serveurs : trois baies qui clignotent, il fait froid. Porte à badge, 1 caméra.',
+      faire: [['Entrer', 'Badge de Marco, badge cloné, ou Technique 15', 'Dedans.'], ['Pirater', 'Technique 15 (ordinateur +3)', 'Au choix : désactiver l\'alarme silencieuse de la chambre forte, ou mettre toutes les caméras en boucle 30 minutes.']],
+      si: [['« On peut faire les deux ? »', 'Oui, mais 2 jets, 2 tours : risqué si quelqu\'un passe.']] },
+    F5: { voir: 'La cuisine du traiteur : plans de travail en inox, un îlot, des chariots à nappe longue, une agitation folle.',
+      faire: [['Se cacher dans un chariot', 'Discrétion 10', 'Une personne ou un sac, invisible.'], ['Voler une tenue de serveur', 'Discrétion 10', 'Accès libre au gala comme serveur.']],
+      si: [['« Le chef nous remarque ? »', 'Seulement s\'ils ne font rien : alors il les engueule et leur met un plateau dans les mains.']] },
+    F6: { voir: 'La salle de réunion : grande table pour 8, vide ce soir. Fenêtres sur la façade nord.',
+      faire: [['Monter au toit par la fenêtre', 'Muscle 12 (grappin)', 'Sur le toit, côté nord.']],
+      si: [['« On peut se cacher ici ? »', 'Oui, personne n\'y entre ce soir.']] },
+    F7: { voir: 'Le bureau d\'Hélène : boiseries, bibliothèque, un grand tableau un peu de travers derrière le bureau.',
+      faire: [['Trouver et ouvrir le coffre', 'Technique 15 (lampe UV +3)', 'Les 4 premiers chiffres du code + le collier d\'Hélène (80 000 €).'], ['Attendre Hélène à 23h20', 'Baratin 15 pour la tromper', 'Sinon elle appelle Kessler : alerte +2.']],
+      si: [['« Hélène vient quand ? »', 'Seule, à 23h20, pour préparer son discours. Elle reste 10 minutes.']] },
+    /* ---------- TOIT ---------- */
+    T1: { voir: 'La verrière : montants métalliques, 12 m au-dessus du hall. On voit la mezzanine du gala en contrebas.',
+      faire: [['Découper un panneau', 'Discrétion 12 (ventouse)', 'Ouverture silencieuse.'], ['Descendre en rappel', 'Discrétion 13', 'Dans le hall. Lance 1d6 : sur 1, un invité lève la tête.']],
+      si: [['« On peut tomber ? »', 'Échec de 5 ou plus au rappel : chute, 3 PV, alerte +1.']] },
+    T2: { voir: 'Le cabanon de l\'escalier : une porte métallique avec un contact d\'alarme. 1 caméra tournée vers le toit.',
+      faire: [['Ouvrir la porte', 'Technique 12', 'Sinon alerte +2 (contact déclenché).']],
+      si: [['« Où mène l\'escalier ? »', 'À tous les étages, jusqu\'au sous-sol.']] },
+    T3: { voir: 'Trois gros groupes de climatisation, bruit constant.',
+      faire: [['Se cacher', 'aucun (Discrétion 15 pendant la ronde de 2h00)', 'Excellente cachette.']],
+      si: [['« Jo nous voit ? »', 'Non, sauf s\'ils bougent pendant sa pause cigarette.']] },
+    T4: { voir: 'L\'entrée de la gaine de ventilation : une grille vissée, un conduit étroit qui plonge.',
+      faire: [['Descendre la gaine', 'Discrétion 13 par étage, 3 jets', 'Arrivée à la chaufferie (S7). Échec : coincé 1 tour, −1 PV.']],
+      si: [['« On peut passer avec les sacs ? »', 'Une personne à la fois, et pas avec un sac plein.']] },
+    T5: { voir: 'Une antenne relais et une parabole.',
+      faire: [['Brouiller les communications', 'Technique 14', 'Les gardes n\'ont plus de radio pendant 20 minutes.']],
+      si: [['« Et la police ? »', 'Le brouillage ne touche que les radios des gardes.']] },
+    T6: { voir: 'Le bord du toit. Le toit voisin est 3 m plus haut, à 6 m.',
+      faire: [['Tyrolienne', 'aucun (si installée)', 'Passage silencieux dans les deux sens.'], ['Sauter', 'Muscle 16', 'Échec : 3 PV et alerte +1.']],
+      si: [['« C\'est une bonne sortie ? »', 'La meilleure si la banque est bouclée : avec les égouts, c\'est la seule.']] },
+    T7: { voir: 'L\'échelle de secours rouillée, façade ouest, qui descend vers la ruelle. Jo fume près du cabanon toutes les 30 minutes.',
+      faire: [['Monter ou descendre', 'Discrétion 13', 'Sinon elle grince : alerte +1.'], ['Neutraliser Jo', 'Discrétion 14 (par derrière)', 'Le toit est libre ; il manquera à la relève (alerte +2 à sa ronde suivante).']],
+      si: [['« Jo fume quand ? »', 'Toutes les 30 minutes, 5 minutes à chaque fois.']] },
+  };
+})();
+
+</script>
+<script>
 /* Dé à 20 faces animé, avec le détail du calcul.
    ValmontDice.create(el, { d, mods: [{label, v}], dd, who, title, size })  → joue l'animation dans el
    ValmontDice.overlay(opts, onClose)                                     → même chose en fenêtre plein écran
@@ -2043,8 +2153,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   function enterNote(s, m, fl, roomId, roomName) {
     let cams = [];
     P.info(fl).camList.forEach((c, i) => { const r = P.roomAt(fl, c.x, c.y); if (r && r.id === roomId && vis('cam', i, fl) === 0) cams.push(i + 1); });
-    const note = ((window.ValmontNotes || {})[roomId] || '').replace(/<[^>]+>/g, '');
-    feedAdd(s, m.name + ' entre : ' + roomName + (note ? ' — ' + note : '') + (cams.length ? ' · attention, ' + (cams.length > 1 ? 'les caméras ' : 'la caméra ') + cams.join(', ') + ' ' + (cams.length > 1 ? 'ne sont pas révélées' : 'n\'est pas révélée') + ' (ils sont filmés)' : ''), cams.length > 0);
+    pieceShown = fl + '|' + roomId;
+    const pz = (window.ValmontRooms || {})[roomId];
+    feedAdd(s, m.name + ' entre : ' + roomName + (pz ? ' · fiche ouverte au milieu' : '') + (cams.length ? ' · attention, ' + (cams.length > 1 ? 'les caméras ' : 'la caméra ') + cams.join(', ') + ' ' + (cams.length > 1 ? 'ne sont pas révélées' : 'n\'est pas révélée') + ' (ils sont filmés)' : ''), cams.length > 0);
   }
   const autoAmb = (s) => (s.alert >= 6 ? 'tension' : s.floor === 'toit' || s.floor === 'sous-sol' ? 'nuit' : s.t < 240 ? 'gala' : 'nuit');
   // quand l'alerte monte : on repart de zéro pour « le calme revient » ; aux paliers 7 et 10 : annonce et journal
@@ -2482,6 +2593,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     } else if (lastRollAt === null) lastRollAt = s.roll ? s.roll.at : 0;
   }
 
+  let pieceShown = '';
   let lastScene = '', sceneWho = '', sceneT = null, lastIntro = null, sceneSince = 0; // la télé ignore les scènes lancées avant son démarrage, ou vieilles de plus de 20 min
   const hideSec = (s) => (s.au && s.au.sceneHide != null ? s.au.sceneHide : 15);
   function sceneResult(s, st) { s.scene = Object.assign({}, s.scene, { st, wait: false, proposal: null, at: Date.now(), hideAt: st !== 'action' && hideSec(s) ? Date.now() + hideSec(s) * 1000 : 0 }); }
@@ -2549,6 +2661,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     $('cAuto').className = 'b sm ' + (s.auto ? 'on' : ''); $('cAuto').textContent = 'Sons automatiques : ' + (s.auto ? 'oui' : 'non');
     $('quickBanner').innerHTML = QUICK_BANNER.map((q) => `<button class="b sm ${s.banner.on && s.banner.text === q ? 'on' : ''}" data-banner="${esc(q)}">${esc(q)}</button>`).join('');
     $('bannerOff').disabled = !s.banner.on;
+    renderPiece(s);
     if ($('cScenes') && window.ValmontScenes) {
       const tn = (s.team || []).map((m) => m.name);
       const sc = s.scene && s.scene.on ? s.scene : null, names = Object.fromEntries(ValmontScenes.situations.map((x) => [x.id, x.name]));
@@ -2568,6 +2681,23 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     reveal: 'Touche une pièce pour la découvrir ou la recacher. Une caméra, un garde ou les lasers : caché → visible → coupé (ou neutralisé) → caché. Les éléments en transparence ne sont visibles que pour toi.',
     ping: 'Touche un endroit du plan : un repère clignote 8 secondes sur la télé. Pratique pour dire « vous êtes ici » ou « vous entendez un bruit là ».',
   };
+  /* fiche détaillée de la pièce (colonne du milieu) */
+  function renderPiece(s) {
+    const R = window.ValmontRooms || {}, N = window.ValmontNotes || {};
+    // les pièces où se trouvent les pions
+    const occ = [];
+    s.team.forEach((m) => { if (m.floor && m.x != null) { const r = P.roomAt(m.floor, m.x, m.y); if (r && R[r.id]) occ.push([m.floor + '|' + r.id, m.name + ' : ' + r.name]); } });
+    if (!pieceShown && occ.length) pieceShown = occ[0][0];
+    $('pieceTabs').innerHTML = occ.map(([k, l]) => `<button class="b sm ${k === pieceShown ? 'on go' : ''}" data-piece="${k}" type="button">${esc(l)}</button>`).join('');
+    if (!pieceShown) return;
+    const [fl, id] = pieceShown.split('|'), z = R[id], f = P.floors.find((x) => x.key === fl), rm = P.info(fl).rooms.find((r) => r.id === id);
+    $('pieceWhere').textContent = f ? f.level + ' · ' + f.name : '';
+    if (!z || !rm) { $('pieceBody').innerHTML = N[id] ? `<p class="pz-voir">${N[id]}</p>` : ''; return; }
+    $('pieceBody').innerHTML = `<div class="pz-head">${id} · ${esc(rm.name)}<small>${s.seen[fl + '|' + id] ? 'découverte' : 'pas encore découverte'}</small></div>
+      <div class="pz-sec"><b>Ce qu'ils voient</b><p class="pz-voir">${esc(z.voir)}</p></div>
+      <div class="pz-sec"><b>Ce qu'ils peuvent faire</b>${z.faire.map(([a, j, r]) => `<div class="pz-act"><b>${esc(a)}</b><code>${esc(j)}</code><span>${esc(r)}</span></div>`).join('')}</div>
+      ${z.si && z.si.length ? `<div class="pz-sec"><b>S'ils demandent</b>${z.si.map(([q, r]) => `<div class="pz-q"><b>${esc(q)}</b><p>${esc(r)}</p></div>`).join('')}</div>` : ''}`;
+  }
   function renderBoard() {
     const s = state, f = P.floors.find((x) => x.key === s.floor);
     $('cFloorName').textContent = f.level + ' · ' + f.name;
@@ -2579,7 +2709,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     $('cModeHint').textContent = HINTS[bmode];
     const info = P.info(s.floor);
     { const N = window.ValmontNotes || {}, here = new Set(s.team.filter((m) => m.floor === s.floor && m.x != null).map((m) => { const r = P.roomAt(s.floor, m.x, m.y); return r ? r.id : ''; }));
-      $('cRoomNotes').innerHTML = info.rooms.filter((r) => N[r.id]).map((r) => `<div class="rn ${here.has(r.id) ? 'here' : ''}"><b>${r.id} · ${esc(r.name)}${here.has(r.id) ? ' <span>● équipe ici</span>' : ''}${s.seen[s.floor + '|' + r.id] ? '' : ' <i>(pas encore découverte)</i>'}</b><p>${N[r.id]}</p></div>`).join(''); }
+      $('cRoomNotes').innerHTML = info.rooms.filter((r) => N[r.id]).map((r) => `<div class="rn ${here.has(r.id) ? 'here' : ''}" data-piece="${s.floor}|${r.id}" role="button" tabindex="0"><b>${r.id} · ${esc(r.name)}${here.has(r.id) ? ' <span>● équipe ici</span>' : ''}${s.seen[s.floor + '|' + r.id] ? '' : ' <i>(pas encore découverte)</i>'}</b><p>${N[r.id]}</p></div>`).join(''); }
     $('cCamList').innerHTML = info.camList.map((c, i) => { const v = vis('cam', i, s.floor), rm = P.roomAt(s.floor, c.x, c.y); return `<div class="camrow"><span>Caméra ${i + 1} · ${esc(rm ? rm.name : 'extérieur')}</span><span class="seg">${[['Cachée', 0], ['Visible', 1], ['Coupée', 2]].map(([l, n]) => `<button class="b sm ${v === n ? 'on go' : ''}" data-camset="${i}|${n}">${l}</button>`).join('')}</span></div>`; }).join('');
     $('cReveal').innerHTML = [
       `<button class="b sm" data-all="cam|1">Montrer les caméras</button>`, `<button class="b sm" data-all="cam|0">Cacher les caméras</button>`,
@@ -2601,9 +2731,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   /* ---------- plateau : glisser, toucher, révéler, montrer ---------- */
   const svgPoint = (svg, e) => { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse()); return [Math.max(24, Math.min(776, q.x)), Math.max(24, Math.min(456, q.y))]; };
   let drag = null, lastLive = 0;
-  function placeMember(id, x, y, final) {
+  function placeMember(id, x, y, final, from) {
     const fl = state.floor;
-    const apply = (s) => { const m = s.team.find((t) => t.id === id); if (!m) return; const was = m.floor === fl && m.x != null ? P.roomAt(fl, m.x, m.y) : null; m.floor = fl; m.x = Math.round(x); m.y = Math.round(y); m.room = ''; const r = P.roomAt(fl, x, y); if (r && s.fog) s.seen[`${fl}|${r.id}`] = true; if (final && r && (!was || was.id !== r.id)) { logAdd(s, m.name + ' entre : ' + r.name); enterNote(s, m, fl, r.id, r.name); } };
+    const apply = (s) => { const m = s.team.find((t) => t.id === id); if (!m) return; const was = from !== undefined ? from : (m.floor === fl && m.x != null ? P.roomAt(fl, m.x, m.y) : null); m.floor = fl; m.x = Math.round(x); m.y = Math.round(y); m.room = ''; const r = P.roomAt(fl, x, y); if (r && s.fog) s.seen[`${fl}|${r.id}`] = true; if (final && r && (!was || was.id !== r.id)) { logAdd(s, m.name + ' entre : ' + r.name); enterNote(s, m, fl, r.id, r.name); } };
     if (final) commit(apply); else liveCommit(apply);
   }
   function placeGuard(i, x, y, final) {
@@ -2620,6 +2750,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     relayState(); publishKnown();
     if (ref) { quietUntil = now + 1500; clearTimeout(timer); timer = setTimeout(flush, 120); }
   }
+  document.getElementById('consoleView').addEventListener('click', (e) => { const p = e.target.closest('div[data-piece]'); if (!p) return; pieceShown = p.dataset.piece; renderPiece(state); try { $('pieceCard').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (er) {} });
   const cplan = document.getElementById('cPlan');
   cplan.addEventListener('pointerdown', (e) => {
     if (bmode !== 'move') return;
@@ -2627,7 +2758,10 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const svg = cplan.querySelector('svg');
     if (!g || !svg) return;
     e.preventDefault();
-    drag = { el: g, svg, id: g.dataset.tok, guard: g.dataset.guard, sx: e.clientX, sy: e.clientY, moved: false, pid: e.pointerId };
+    const mm = g.dataset.tok ? state.team.find((t) => t.id === g.dataset.tok) : null;
+    // la pièce de départ, notée avant que le glissement ne change la position
+    const from = mm && mm.floor === state.floor && mm.x != null ? P.roomAt(state.floor, mm.x, mm.y) : null;
+    drag = { el: g, svg, id: g.dataset.tok, guard: g.dataset.guard, sx: e.clientX, sy: e.clientY, moved: false, pid: e.pointerId, from };
     try { g.setPointerCapture(e.pointerId); } catch (x) {}
   });
   cplan.addEventListener('pointermove', (e) => {
@@ -2642,7 +2776,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   const endDrag = (e) => {
     if (!drag || e.pointerId !== drag.pid) return;
     const d = drag; drag = null;
-    if (d.moved) { if (d.id) placeMember(d.id, d.x, d.y, true); else placeGuard(+d.guard, d.x, d.y, true); return; }
+    if (d.moved) { if (d.id) placeMember(d.id, d.x, d.y, true, d.from); else placeGuard(+d.guard, d.x, d.y, true); return; }
     if (d.id) { selected = selected === d.id ? null : d.id; render(); }
   };
   cplan.addEventListener('pointerup', endDrag);
@@ -2692,6 +2826,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.out) { const id = selected; selected = null; return commit((s) => { const m = s.team.find((t) => t.id === id); if (m) { m.floor = ''; m.x = null; m.y = null; m.room = ''; } }); }
     if (d.intro === 'new') { selected = null; commit((s) => { const team = s.team.map((m) => Object.assign({}, m, { hp: m.hpMax, en: m.enMax, floor: '', room: '', x: null, y: null, ts: Date.now() })); Object.assign(s, fresh(), { team, gone: s.gone, intro: { phase: 'video', at: Date.now() } }); tacc = 0; }); state.team.forEach(pushToPlayer); return; }
     if (d.intro) return commit((s) => { s.intro = d.intro === 'off' ? null : { phase: d.intro, at: Date.now() }; });
+    if (d.piece) { pieceShown = d.piece; renderPiece(state); try { $('pieceCard').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} return; }
     if (d.scwho != null) { sceneWho = d.scwho; return render(); }
     if (d.scgo) return commit((s) => { s.scene = { on: true, sit: d.scgo, st: 'action', who: sceneWho, at: Date.now(), wait: true, hideAt: 0 }; });
     if (d.scres) return commit((s) => { if (s.scene && s.scene.on) sceneResult(s, d.scres); });
