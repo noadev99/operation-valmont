@@ -2348,7 +2348,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
           else ValmontIntro.poster({ names: nm });
         }
       } }
-    { const sc = s.scene, key = sc && sc.on && !(sc.hideAt && Date.now() > sc.hideAt) ? sc.sit + '|' + sc.st + '|' + (sc.who || '') + '|' + sc.at : '';
+    { const sc = s.scene, key = sc && sc.on && !(sc.hideAt && Date.now() > sc.hideAt) && sc.at >= sceneSince && Date.now() - sc.at < 20 * 60000 ? sc.sit + '|' + sc.st + '|' + (sc.who || '') + '|' + sc.at : '';
       if (key !== lastScene) {
         lastScene = key;
         const box = $('scenefx');
@@ -2373,7 +2373,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     } else if (lastRollAt === null) lastRollAt = s.roll ? s.roll.at : 0;
   }
 
-  let lastScene = '', sceneWho = '', sceneT = null, lastIntro = null;
+  let lastScene = '', sceneWho = '', sceneT = null, lastIntro = null, sceneSince = 0; // la télé ignore les scènes lancées avant son démarrage, ou vieilles de plus de 20 min
   const hideSec = (s) => (s.au && s.au.sceneHide != null ? s.au.sceneHide : 15);
   function sceneResult(s, st) { s.scene = Object.assign({}, s.scene, { st, wait: false, proposal: null, at: Date.now(), hideAt: st !== 'action' && hideSec(s) ? Date.now() + hideSec(s) * 1000 : 0 }); }
   let confirmDel = null, confirmReset = false;
@@ -2677,7 +2677,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       if (c.length >= 4 && c !== room) { setRoom(c); startRelay(true); }
       b.remove(); try { ValmontSound.unlock(); } catch (e) {}
       const nm = (state.team || []).map((m) => m.name);
-      setTimeout(() => ValmontIntro.play({ names: nm, onEnd: () => ValmontIntro.poster({ names: nm, play: true, onClose: () => render() }) }), 120);
+      setTimeout(() => ValmontIntro.play({ names: nm, onEnd: () => ValmontIntro.poster({ names: nm, play: true, onClose: () => { sceneSince = Date.now(); lastScene = null; render(); } }) }), 120);
     };
     const ri = b.querySelector('#bootRoom'); if (ri) { ri.value = room; ri.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); }); }
     b.querySelector('#bootGo').addEventListener('click', go);
