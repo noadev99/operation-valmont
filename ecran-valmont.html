@@ -464,8 +464,18 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     garde: { action: 'Ne faites pas un bruit…', ok: 'Le garde passe son chemin.', ko: 'Repérés par le garde !' },
     fuite: { action: 'Direction la camionnette…', ok: 'Ils ont filé avec le butin !', ko: 'La police bloque la route !' },
   };
-  const TITLE = { smoking: 'Entrée en smoking', traiteur: 'Livraison du traiteur', egouts: 'Les égouts', toit: 'Par le toit', quai: 'Le quai de livraison', ventilation: 'La ventilation', crochetage: 'Le crochetage', camera: 'La caméra', hack: 'Piratage', garde: 'Face au garde', badge: 'La porte à badge', escalier: 'L\'escalier', coffre: 'La chambre forte', fuite: 'La fuite' };
+  const TITLE = { bar: 'Paul au bar', empreinte: 'L\'empreinte d\'Hélène', badgevol: 'Le badge de Marco', diversion: 'La diversion', bureau: 'Le bureau d\'Hélène', cachette: 'Cachés pendant la ronde', lasers: 'Les lasers', code: 'Le code du coffre', combat: 'Le garde au sol', soin: 'Le kit médical', smoking: 'Entrée en smoking', traiteur: 'Livraison du traiteur', egouts: 'Les égouts', toit: 'Par le toit', quai: 'Le quai de livraison', ventilation: 'La ventilation', crochetage: 'Le crochetage', camera: 'La caméra', hack: 'Piratage', garde: 'Face au garde', badge: 'La porte à badge', escalier: 'L\'escalier', coffre: 'La chambre forte', fuite: 'La fuite' };
   const GENERIC = {
+    bar: { action: 'Un verre, un sourire, une question…', ok: 'Paul parle : les dettes de jeu sortent.', ko: 'Paul se méfie et appelle la sécurité !' },
+    empreinte: { action: 'La coupe de champagne, sans un bruit…', ok: 'Empreinte relevée sur le verre.', ko: 'Hélène a remarqué le geste !' },
+    badgevol: { action: 'Une main légère près de la poche…', ok: 'Le badge de Marco change de main.', ko: 'Marco attrape son poignet !' },
+    diversion: { action: 'Un verre qui tombe, tous les regards se tournent…', ok: 'La salle est détournée : la voie est libre.', ko: 'La diversion échoue : tout le monde regarde vers eux !' },
+    bureau: { action: 'Le bureau d\'Hélène, tiroirs et tableau…', ok: 'Le coffre caché derrière le tableau.', ko: 'Des pas dans le couloir : Hélène revient !' },
+    cachette: { action: 'Sous la nappe, le souffle retenu…', ok: 'La ronde passe sans les voir.', ko: 'Une lampe balaie leur cachette !' },
+    lasers: { action: 'Entre les faisceaux, au millimètre…', ok: 'Ils passent sans toucher un seul laser.', ko: 'Un laser est touché : l\'alarme sonne !' },
+    code: { action: 'Les huit chiffres, un par un…', ok: 'Bip vert : le dernier verrou cède.', ko: 'Code refusé : le clavier se bloque !' },
+    combat: { action: 'Une bagarre en silence dans l\'ombre…', ok: 'Le garde est au sol, sans bruit.', ko: 'Le garde crie, la radio grésille !' },
+    soin: { action: 'Un coéquipier à terre, le kit ouvert…', ok: 'Il ouvre les yeux : debout !', ko: 'Ça ne prend pas : il faut recommencer vite !' },
     smoking: { action: 'Sourires et champagne : ils jouent les invités…', ok: 'Le portier les laisse entrer.', ko: 'Ce nom n\'est pas sur la liste !' },
     traiteur: { action: 'Ils poussent le chariot du traiteur…', ok: 'Le livreur ne se doute de rien.', ko: 'Le vrai traiteur arrive !' },
     egouts: { action: 'Dans le noir, jusqu\'aux genoux…', ok: 'La grille cède : ils sont sous la banque.', ko: 'La grille est scellée, l\'eau monte !' },
