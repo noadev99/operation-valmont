@@ -463,8 +463,14 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     garde: { action: 'Ne faites pas un bruit…', ok: 'Le garde passe son chemin.', ko: 'Repérés par le garde !' },
     fuite: { action: 'Direction la camionnette…', ok: 'Ils ont filé avec le butin !', ko: 'La police bloque la route !' },
   };
-  const TITLE = { crochetage: 'Le crochetage', camera: 'La caméra', hack: 'Piratage', garde: 'Face au garde', badge: 'La porte à badge', escalier: 'L\'escalier', coffre: 'La chambre forte', fuite: 'La fuite' };
+  const TITLE = { smoking: 'Entrée en smoking', traiteur: 'Livraison du traiteur', egouts: 'Les égouts', toit: 'Par le toit', quai: 'Le quai de livraison', ventilation: 'La ventilation', crochetage: 'Le crochetage', camera: 'La caméra', hack: 'Piratage', garde: 'Face au garde', badge: 'La porte à badge', escalier: 'L\'escalier', coffre: 'La chambre forte', fuite: 'La fuite' };
   const GENERIC = {
+    smoking: { action: 'Sourires et champagne : ils jouent les invités…', ok: 'Le portier les laisse entrer.', ko: 'Ce nom n\'est pas sur la liste !' },
+    traiteur: { action: 'Ils poussent le chariot du traiteur…', ok: 'Le livreur ne se doute de rien.', ko: 'Le vrai traiteur arrive !' },
+    egouts: { action: 'Dans le noir, jusqu\'aux genoux…', ok: 'La grille cède : ils sont sous la banque.', ko: 'La grille est scellée, l\'eau monte !' },
+    toit: { action: 'Corde tendue au-dessus du vide…', ok: 'Pied posé sur le toit de la banque.', ko: 'La corde lâche : ils glissent !' },
+    quai: { action: 'La rampe du quai, le moteur au ralenti…', ok: 'Le quai est vide : ils passent.', ko: 'Un agent de sécurité sort sur le quai !' },
+    ventilation: { action: 'À plat ventre dans la gaine…', ok: 'Ils débouchent dans la salle.', ko: 'La grille craque : tout résonne !' },
     crochetage: { action: 'La serrure résiste…', ok: 'Clic ! La porte s\'ouvre.', ko: 'Le crochet casse dans la serrure !' },
     camera: { action: 'Plaqués au mur, sous la caméra…', ok: 'La caméra se détourne : ils passent.', ko: 'Le voyant rouge s\'allume : repérés !' },
     badge: { action: 'Le badge glisse dans le lecteur…', ok: 'Voyant vert : la porte s\'ouvre.', ko: 'Voyant rouge : badge refusé !' },
