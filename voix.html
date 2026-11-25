@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voix off de l'intro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Stencil+One&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root { --bg: #0b0d12; --panel: #141821; --line: #262c39; --fg: #f3ead6; --muted: #a39b8b; --gold: #e8b64a; --red: #ff4d4d; --green: #41e08a; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 "Archivo", system-ui, sans-serif; }
+main { max-width: 900px; margin: 0 auto; padding: 24px 16px 80px; display: grid; gap: 16px; }
+h1 { font: 400 clamp(2rem, 6vw, 3.4rem)/1 "Saira Stencil One", Impact, sans-serif; margin: 0; letter-spacing: .02em; }
+.lead { color: var(--muted); margin: 0; }
+.tips { background: var(--panel); border: 1px solid var(--line); padding: 14px 16px; display: grid; gap: 6px; }
+.tips b { color: var(--gold); }
+.top { display: flex; gap: 10px; flex-wrap: wrap; }
+button { font: 600 1rem "Archivo", sans-serif; padding: 10px 16px; border: 1px solid var(--line); background: #1d2230; color: var(--fg); cursor: pointer; min-height: 44px; }
+button:hover { border-color: var(--gold); }
+button.rec { background: #3a1416; border-color: var(--red); }
+button.rec.on { background: var(--red); color: #fff; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: .6; } }
+button.go { background: var(--gold); color: #14110f; border-color: var(--gold); }
+button:disabled { opacity: .4; cursor: default; }
+.line { background: var(--panel); border: 1px solid var(--line); padding: 16px; display: grid; gap: 12px; }
+.line.done { border-color: rgba(65,224,138,.5); }
+.line .n { font: 600 .85rem "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .15em; display: flex; justify-content: space-between; gap: 8px; }
+.line .n .ok { color: var(--green); }
+.line q { font: italic clamp(1.2rem, 3vw, 1.7rem)/1.4 Georgia, serif; quotes: none; }
+.line .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.meter { height: 6px; background: #000; flex: 1 1 120px; min-width: 120px; }
+.meter i { display: block; height: 100%; width: 0; background: var(--green); transition: width .08s; }
+.msg { color: var(--red); }
+</style>
+</head>
+<body>
+<main>
+  <h1>La voix off de l'intro</h1>
+  <p class="lead">Enregistre les 10 répliques de la vidéo d'intro. Elles sont gardées dans ce navigateur : la télé les jouera toute seule si elle est ouverte sur le même ordinateur. Pour un autre appareil, télécharge les fichiers et mets-les dans le dossier <b>intro/</b> du jeu.</p>
+  <div class="tips">
+    <div><b>Le ton</b> : voix grave, lente, comme une bande-annonce. Laisse une petite pause avant de parler.</div>
+    <div><b>Le micro</b> : pièce calme, à 20 cm de la bouche. Le premier clic demandera l'autorisation du micro.</div>
+    <div><b>Durée</b> : vise la durée indiquée. Si tu parles plus longtemps, la scène attend la fin de ta phrase.</div>
+  </div>
+  <div class="top">
+    <button class="go" id="playAll" type="button">▶ Voir l'intro avec ma voix</button>
+    <button id="dlAll" type="button">⬇ Télécharger toutes les voix</button>
+  </div>
+  <p class="msg" id="msg" role="status"></p>
+  <div id="list" style="display:grid;gap:12px"></div>
+</main>
+<script>
+/* Sons d'ambiance d'Opération Valmont, fabriqués par le navigateur (aucun fichier à charger).
+   ValmontSound.unlock()   : à appeler après un clic (les navigateurs interdisent le son avant)
+   ValmontSound.play(id)   : un effet · ValmontSound.ambience(id) : une ambiance en boucle ('' = silence)
+   ValmontSound.setVolume(0..1) */
+(function () {
+  let ctx = null, master = null, vol = 0.7, amb = null, ambId = '';
+  const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+
+  function unlock() {
+    if (!AC) return false;
+    if (!ctx) { ctx = new AC(); master = ctx.createGain(); master.gain.value = vol; master.connect(ctx.destination); }
+    if (ctx.state === 'suspended') ctx.resume();
+    return true;
+  }
+  const on = () => !!ctx && ctx.state === 'running';
+  const T = () => ctx.currentTime;
+
+  let nbuf = null;
+  function noiseBuffer() {
+    if (nbuf) return nbuf;
+    nbuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = nbuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return nbuf;
+  }
+  function env(g, t0, dur, peak, attack = 0.01) {
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  }
+  function tone(type, f, t0, dur, peak = 0.25, f2, out) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t0);
+    if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
+    env(g, t0, dur, peak);
+    o.connect(g); g.connect(out || master);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function noise(t0, dur, peak, ftype, freq, q = 1, out) {
+    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = noiseBuffer(); s.loop = true;
+    f.type = ftype; f.frequency.value = freq; f.Q.value = q;
+    env(g, t0, dur, peak, Math.min(0.02, dur / 3));
+    s.connect(f); f.connect(g); g.connect(out || master);
+    s.start(t0, Math.random()); s.stop(t0 + dur + 0.05);
+  }
+
+  /* ----- effets ----- */
+  const FX = {
+    alarm() { const t = T(), o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; g.gain.value = 0.13; o.connect(g); g.connect(master);
+      for (let i = 0; i < 12; i++) o.frequency.setValueAtTime(i % 2 ? 660 : 920, t + i * 0.3);
+      g.gain.setValueAtTime(0.13, t + 3.4); g.gain.linearRampToValueAtTime(0.0001, t + 3.7); o.start(t); o.stop(t + 3.7); },
+    siren() { const t = T(), o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(); o.type = 'sawtooth'; f.type = 'lowpass'; f.frequency.value = 2200; g.gain.value = 0.14;
+      o.connect(f); f.connect(g); g.connect(master);
+      for (let i = 0; i < 5; i++) { o.frequency.setValueAtTime(650, t + i * 1.4); o.frequency.linearRampToValueAtTime(1050, t + i * 1.4 + 0.7); o.frequency.linearRampToValueAtTime(650, t + i * 1.4 + 1.4); }
+      g.gain.setValueAtTime(0.14, t + 6.4); g.gain.linearRampToValueAtTime(0.0001, t + 7); o.start(t); o.stop(t + 7); },
+    beep() { const t = T(); tone('sine', 1320, t, 0.12, 0.25); tone('sine', 1760, t + 0.14, 0.2, 0.25); },
+    refus() { const t = T(); tone('square', 200, t, 0.18, 0.18); tone('square', 160, t + 0.22, 0.3, 0.18); },
+    steps() { const t = T(); for (let i = 0; i < 7; i++) { noise(t + i * 0.44 + (i % 2) * 0.03, 0.1, 0.5, 'lowpass', 260 + (i % 2) * 60, 1); tone('sine', 85, t + i * 0.44, 0.1, 0.25); } },
+    blackout() { const t = T(); tone('sawtooth', 320, t, 1, 0.25, 38); noise(t, 0.4, 0.4, 'lowpass', 140, 1); tone('sine', 50, t + 0.05, 0.9, 0.5); noise(t + 1.1, 1.4, 0.05, 'bandpass', 120, 8); },
+    vault() { const t = T(); tone('sine', 62, t, 0.9, 0.6, 34); noise(t + 0.05, 0.18, 0.4, 'bandpass', 3200, 8); noise(t + 0.4, 1.3, 0.14, 'highpass', 5500, 0.7); tone('sine', 55, t + 1, 0.7, 0.5, 30); noise(t + 1.02, 0.15, 0.3, 'bandpass', 2200, 6); },
+    gong() { const t = T(); [1, 2.76, 5.4, 8.93].forEach((m, i) => tone('sine', 170 * m, t, 3.6 - i * 0.5, 0.28 / (i + 1))); noise(t, 0.12, 0.2, 'bandpass', 900, 2); },
+    success() { const t = T(); [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, t + i * 0.1, 0.45, 0.22)); },
+    fail() { const t = T(); [392, 330, 262].forEach((f, i) => tone('sawtooth', f, t + i * 0.2, 0.4, 0.12)); },
+    talkie() { const t = T(); noise(t, 0.12, 0.25, 'bandpass', 1700, 2); tone('sine', 1000, t + 0.14, 0.08, 0.15); noise(t + 0.35, 0.5, 0.18, 'bandpass', 1500, 2); noise(t + 0.95, 0.1, 0.25, 'bandpass', 1700, 2); },
+    coeur() { const t = T(); for (let i = 0; i < 4; i++) { tone('sine', 70, t + i * 0.95, 0.18, 0.7, 40); tone('sine', 60, t + i * 0.95 + 0.22, 0.2, 0.5, 36); } },
+    ping() { const t = T(); tone('sine', 880, t, 0.35, 0.22); tone('sine', 1320, t + 0.02, 0.3, 0.1); },
+    dice() { const t = T(); let x = 0, gap = 0.13; for (let i = 0; i < 14; i++) { noise(t + x, 0.05, 0.22, 'bandpass', 1500 + Math.random() * 1500, 3); tone('triangle', 500 + Math.random() * 300, t + x, 0.04, 0.05); x += gap; gap = Math.max(0.05, gap * 0.9); }
+      tone('sine', 120, t + 1.15, 0.2, 0.45, 70); },
+    /* --- pour l'intro --- */
+    whoosh() { const t = T(), s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noiseBuffer(); f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(4000, t + 0.45); f.frequency.exponentialRampToValueAtTime(800, t + 0.8); env(g, t, 0.85, 0.5, 0.25); s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + 0.9); },
+    boom() { const t = T(); tone('sine', 90, t, 1.6, 0.9, 28); tone('triangle', 55, t, 1.2, 0.5, 30); noise(t, 0.35, 0.6, 'lowpass', 400, 1); noise(t + 0.02, 1.4, 0.12, 'lowpass', 160, 1); },
+    riser() { const t = T(), o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(880, t + 2.6); f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(5000, t + 2.6); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 2.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8); o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + 2.9); noise(t, 2.7, 0.08, 'highpass', 3000, 0.7); },
+    tick() { const t = T(); tone('square', 2400, t, 0.03, 0.12); noise(t, 0.03, 0.15, 'highpass', 5000, 1); },
+    type() { const t = T(); noise(t, 0.025, 0.35, 'bandpass', 2500 + Math.random() * 1500, 4); tone('square', 180, t, 0.02, 0.05); },
+    thunder() { const t = T(); noise(t, 0.08, 0.8, 'highpass', 1500, 0.7); noise(t + 0.05, 3.2, 0.5, 'lowpass', 220, 0.8); tone('sine', 45, t + 0.1, 2.5, 0.5, 30); },
+    stinger() { const t = T(); [65.4, 98, 130.8, 155.6].forEach((f, i) => tone('sawtooth', f, t, 3.2, 0.09 / (i * 0.5 + 1))); tone('sine', 65.4, t, 3, 0.5, 40); noise(t, 0.4, 0.4, 'lowpass', 900, 1); },
+  };
+  const NAMES = { alarm: 'Alarme', siren: 'Sirène de police', beep: 'Badge accepté', refus: 'Badge refusé', steps: 'Pas dans l\'escalier', blackout: 'Coupure de courant', vault: 'Chambre forte', gong: 'Cloche de 6h00', success: 'Réussite', fail: 'Échec', talkie: 'Talkie des gardes', coeur: 'Battements de cœur', ping: 'Repère', dice: 'Dé qui roule', whoosh: 'Souffle', boom: 'Impact', riser: 'Montée', tick: 'Tic', type: 'Machine à écrire', thunder: 'Tonnerre', stinger: 'Générique' };
+
+  /* ----- ambiances (en boucle) ----- */
+  function startAmbience(id) {
+    const g = ctx.createGain(); g.gain.value = 0.0001; g.connect(master);
+    g.gain.exponentialRampToValueAtTime(1, T() + 1.2);
+    const nodes = [], timers = [];
+    const src = (type, f, peak, dest) => { const o = ctx.createOscillator(), og = ctx.createGain(); o.type = type; o.frequency.value = f; og.gain.value = peak; o.connect(og); og.connect(dest || g); o.start(); nodes.push(o); return { o, og }; };
+    const hiss = (ftype, freq, peak, q = 1) => { const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), sg = ctx.createGain(); s.buffer = noiseBuffer(); s.loop = true; f.type = ftype; f.frequency.value = freq; f.Q.value = q; sg.gain.value = peak; s.connect(f); f.connect(sg); sg.connect(g); s.start(); nodes.push(s); return f; };
+    if (id === 'gala') {
+      const CH = [[110, 220, 261.6, 329.6, 392], [146.8, 220, 261.6, 349.2, 440], [98, 196, 246.9, 293.7, 349.2], [130.8, 196, 261.6, 329.6, 392]];
+      let i = 0;
+      const chord = () => {
+        const t = T(), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 950; lp.connect(g);
+        CH[i++ % CH.length].forEach((f, k) => { const o = ctx.createOscillator(), og = ctx.createGain(); o.type = k ? 'triangle' : 'sine'; o.frequency.value = f * (1 + (Math.random() - 0.5) * 0.004);
+          og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.07, t + 1.2); og.gain.exponentialRampToValueAtTime(0.0001, t + 5.2); o.connect(og); og.connect(lp); o.start(t); o.stop(t + 5.3); });
+      };
+      chord(); timers.push(setInterval(chord, 4000));
+      hiss('bandpass', 650, 0.035, 0.6);
+    } else if (id === 'tension') {
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 200; f.connect(g);
+      src('sawtooth', 55, 0.1, f); src('sawtooth', 55.8, 0.1, f); src('sine', 41, 0.18, g);
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.12; lg.gain.value = 90; lfo.connect(lg); lg.connect(f.frequency); lfo.start(); nodes.push(lfo);
+      hiss('highpass', 6000, 0.008);
+      const beat = () => { const t = T(); tone('sine', 66, t, 0.16, 0.35, 40, g); tone('sine', 58, t + 0.2, 0.18, 0.25, 36, g); };
+      beat(); timers.push(setInterval(beat, 1100));
+    } else if (id === 'pluie') {
+      hiss('bandpass', 1800, 0.06, 0.4); hiss('lowpass', 500, 0.08); hiss('highpass', 7000, 0.015);
+      const drop = () => { const t = T(); for (let i = 0; i < 6; i++) noise(t + Math.random() * 0.9, 0.02, 0.05 + Math.random() * 0.08, 'bandpass', 2000 + Math.random() * 3000, 6, g); };
+      drop(); timers.push(setInterval(drop, 900));
+      src('sine', 41, 0.06);
+    } else {
+      const { og } = src('sine', 82.4, 0.09); src('sine', 123.5, 0.04); src('sine', 61.7, 0.07);
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.18; lg.gain.value = 0.04; lfo.connect(lg); lg.connect(og.gain); lfo.start(); nodes.push(lfo);
+      const w = hiss('lowpass', 320, 0.05);
+      const wl = ctx.createOscillator(), wg = ctx.createGain(); wl.frequency.value = 0.07; wg.gain.value = 140; wl.connect(wg); wg.connect(w.frequency); wl.start(); nodes.push(wl);
+    }
+    return { id, g, stop() { const t = T(); g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7); timers.forEach(clearInterval); setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch (e) {} }), 900); } };
+  }
+  function ambience(id) {
+    id = id || '';
+    if (!on()) { ambId = id; return false; }
+    if (id === (amb ? amb.id : '')) return true;
+    if (amb) { amb.stop(); amb = null; }
+    ambId = id;
+    if (id) amb = startAmbience(id);
+    return true;
+  }
+  function setVolume(v) { vol = Math.max(0, Math.min(1, +v || 0)); if (master) master.gain.setTargetAtTime(vol, ctx.currentTime, 0.05); }
+  function play(id) { if (!on() || !FX[id]) return false; FX[id](); return true; }
+
+  window.ValmontSound = { unlock, play, ambience, setVolume, isOn: on, names: NAMES, pending: () => ambId };
+})();
+
+</script>
+<script>
+/* Plans de la Banque Valmont & Fils — dessin architectural des 4 niveaux.
+   Partagé par le dossier du MJ et l'écran de projection.
+   API : ValmontPlans.floors, ValmontPlans.rooms(key), ValmontPlans.svg(key, opts)
+   opts : { cams, guards, lasers, labels, tokens: [{room, text, color}] }
+   Couleurs : variables --pl-* définies par la page qui affiche le plan. */
+(function () {
+  let uid = 0;
+  const f = (n) => Math.round(n * 10) / 10;
+
+  /* ---------- primitives ---------- */
+  const R = (x, y, w, h, cls, more = '') => `<rect x="${x}" y="${y}" width="${w}" height="${h}" class="${cls}" ${more}/>`;
+  const L = (x1, y1, x2, y2, cls = 'pl-fl') => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="${cls}"/>`;
+  const C = (cx, cy, r, cls = 'pl-furn') => `<circle cx="${cx}" cy="${cy}" r="${r}" class="${cls}"/>`;
+  const T = (x, y, s, cls = 'pl-note', anchor = 'middle') => `<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}">${s}</text>`;
+
+  // porte : gond en (x,y), ouverture len, o = 'h' (mur horizontal) ou 'v', s = sens (+1/-1), 0 = passage sans battant
+  // len négatif : la porte s'ouvre vers la gauche (ou vers le haut) depuis le gond
+  function door(x, y, len, o, s, t = 8) {
+    const a = Math.abs(len), lo = Math.min(0, len);
+    let g = o === 'h' ? R(x + lo, y - t / 2, a, t, 'pl-gap') : R(x - t / 2, y + lo, t, a, 'pl-gap');
+    if (!s) return g;
+    const flip = len < 0;
+    if (o === 'h') {
+      g += L(x, y, x, y + s * a, 'pl-leaf');
+      g += `<path class="pl-swing" d="M${x} ${y + s * a} A${a} ${a} 0 0 ${(s > 0) !== flip ? 0 : 1} ${x + len} ${y}"/>`;
+    } else {
+      g += L(x, y, x + s * a, y, 'pl-leaf');
+      g += `<path class="pl-swing" d="M${x + s * a} ${y} A${a} ${a} 0 0 ${(s > 0) !== flip ? 1 : 0} ${x} ${y + len}"/>`;
+    }
+    return g;
+  }
+  // fenêtre sur un mur extérieur
+  function win(x1, y1, x2, y2) {
+    if (y1 === y2) return R(x1, y1 - 5, x2 - x1, 10, 'pl-win') + L(x1, y1, x2, y1, 'pl-winl');
+    return R(x1 - 5, y1, 10, y2 - y1, 'pl-win') + L(x1, y1, x1, y2, 'pl-winl');
+  }
+  const chair = (cx, cy, rot = 0) => `<g transform="translate(${cx} ${cy}) rotate(${rot})"><rect x="-5" y="-5" width="10" height="10" rx="2" class="pl-furn"/><line x1="-5" y1="-5" x2="5" y2="-5" class="pl-fl2"/></g>`;
+  const desk = (x, y, w, h) => R(x, y, w, h, 'pl-furn');
+  function table(cx, cy, r, n) {
+    let s = '';
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      s += chair(f(cx + Math.cos(a) * (r + 7)), f(cy + Math.sin(a) * (r + 7)), (a * 180) / Math.PI + 90);
+    }
+    return s + C(cx, cy, r);
+  }
+  const car = (x, y, w, h) => `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" class="pl-furn"/><rect x="${x + 5}" y="${y + h * 0.22}" width="${w - 10}" height="${h * 0.16}" rx="3" class="pl-glassf"/><rect x="${x + 5}" y="${y + h * 0.66}" width="${w - 10}" height="${h * 0.12}" rx="3" class="pl-glassf"/></g>`;
+  function stairs(x, y, w, h, label = 'monte') {
+    let s = R(x, y, w, h, 'pl-stair');
+    for (let yy = y + 8; yy < y + h; yy += 8) s += L(x, yy, x + w, yy, 'pl-fl');
+    s += `<path class="pl-arrow" d="M${x + w / 2} ${y + h - 6} V${y + 10}" marker-end="url(#ARW)"/>`;
+    return s + T(x + w / 2, y + h + 13, label, 'pl-tiny');
+  }
+  const lift = (x, y, w, h) => R(x, y, w, h, 'pl-stair') + L(x, y, x + w, y + h) + L(x + w, y, x, y + h) + T(x + w / 2, y + h + 13, 'asc.', 'pl-tiny');
+  const vent = (x, y, s) => R(x, y, s, s, 'pl-furn') + L(x, y, x + s, y + s) + L(x + s, y, x, y + s);
+
+  /* ---------- niveaux ---------- */
+  // pièces : [id, nom, x, y, w, h, sol, lx?, ly?]
+  const FLOORS = [
+    {
+      key: 'sous-sol', level: 'Niveau −1', name: 'Sous-sol',
+      rooms: [
+        ['C', 'Couloir', 20, 120, 760, 40, 'tile'],
+        ['S1', 'Chambre forte', 460, 160, 320, 300, 'metal', 620, 262],
+        ['S2', 'Sas laser', 320, 160, 140, 300, 'concrete', 390, 186],
+        ['S3', 'Quai du fourgon', 20, 160, 300, 300, 'concrete', 110, 186],
+        ['S4', 'Local électrique', 20, 20, 180, 100, 'concrete', 100, 104],
+        ['S5', 'Archives', 200, 20, 140, 100, 'concrete', 270, 112],
+        ['S6', 'Poste de garde', 440, 20, 160, 100, 'tile', 520, 112],
+        ['S7', 'Chaufferie', 600, 20, 180, 100, 'concrete', 670, 112],
+      ],
+      vault: ['S1'],
+      body() {
+        let s = '';
+        // S3 quai : piliers, voitures, emplacement du fourgon, rampe
+        [[110, 250], [230, 250], [110, 380], [230, 380]].forEach(([x, y]) => (s += R(x - 6, y - 6, 12, 12, 'pl-pillar')));
+        s += car(206, 270, 40, 80) + car(258, 270, 40, 80);
+        s += R(40, 330, 150, 70, 'pl-bay') + T(115, 370, 'emplacement fourgon', 'pl-tiny');
+        for (let y = 412; y < 456; y += 8) s += L(24, y, 86, y, 'pl-fl');
+            // S1 chambre forte : casiers, palettes de lingots, table d'inspection
+        for (let r = 0; r < 3; r++) for (let c = 0; c < 19; c++) s += R(478 + c * 15, 174 + r * 13, 13, 11, 'pl-box');
+        for (let r = 0; r < 13; r++) for (let c = 0; c < 2; c++) s += R(744 + c * 14, 222 + r * 17, 12, 15, 'pl-box');
+        [[530, 300], [600, 300], [670, 300], [530, 370], [600, 370], [670, 370]].forEach(([x, y]) => {
+          s += R(x, y, 52, 40, 'pl-pallet');
+          for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) s += R(x + 5 + i * 15, y + 6 + j * 15, 13, 9, 'pl-goldbar');
+        });
+        s += desk(560, 428, 120, 18) + T(620, 422, 'table d\'inspection', 'pl-tiny');
+        // S4 : armoires électriques et transformateur
+        for (let i = 0; i < 6; i++) s += R(28 + i * 22, 26, 20, 12, 'pl-furn') + L(32 + i * 22, 32, 44 + i * 22, 32, 'pl-fl');
+        s += R(150, 52, 40, 38, 'pl-furn') + `<path class="pl-bolt" d="M172 58l-8 14h7l-5 13 12-17h-7l5-10z"/>`;
+        // S5 : rayonnages
+        for (let i = 0; i < 4; i++) s += R(210, 30 + i * 18, 120, 8, 'pl-furn');
+        // S6 : table, chaises, râtelier
+        s += desk(470, 48, 70, 30) + chair(482, 40, 0) + chair(528, 40, 0) + chair(482, 86, 180) + chair(528, 86, 180);
+        s += R(586, 28, 10, 70, 'pl-furn') + T(570, 34, 'râtelier', 'pl-tiny');
+        // S7 : chaudières, tuyaux, grille d'égout, gaine
+        s += C(632, 56, 18) + C(676, 56, 18) + C(632, 56, 8, 'pl-fl') + C(676, 56, 8, 'pl-fl');
+        s += `<path class="pl-pipe" d="M650 56H658M632 74V100H720M676 74V92H720"/>`;
+        s += C(735, 100, 12, 'pl-grate') + L(725, 96, 745, 96) + L(725, 104, 745, 104) + L(731, 90, 731, 110) + L(739, 90, 739, 110);
+        s += vent(742, 30, 26);
+        s += stairs(340, 20, 60, 100) + lift(400, 20, 40, 100);
+        return s;
+      },
+      doors: [[100, 120, 26, 'h', -1], [255, 120, 26, 'h', -1], [350, 120, 40, 'h', 0], [406, 120, 28, 'h', 0], [500, 120, 26, 'h', -1], [650, 120, 26, 'h', -1],
+        [150, 160, 30, 'h', 1], [375, 160, 30, 'h', 1], [20, 405, 50, 'v', 0, 14]],
+      windows: [],
+      special: () => `<g class="pl-vaultdoor"><circle cx="460" cy="310" r="27"/><circle cx="460" cy="310" r="14"/>${[0, 60, 120].map((a) => `<line x1="${f(460 + 14 * Math.cos(a * Math.PI / 180))}" y1="${f(310 + 14 * Math.sin(a * Math.PI / 180))}" x2="${f(460 - 14 * Math.cos(a * Math.PI / 180))}" y2="${f(310 - 14 * Math.sin(a * Math.PI / 180))}"/>`).join('')}</g>` + T(460, 352, 'porte 20 t', 'pl-tiny') + `<path class="pl-shutter" d="M20 405V455"/>`,
+      lasers: () => {
+        let s = '';
+        for (let y = 204; y <= 432; y += 19) s += L(328, y, 452, y, 'pl-laser') + C(328, y, 2, 'pl-emit') + C(452, y, 2, 'pl-emit');
+        return s + L(328, 204, 452, 432, 'pl-laser') + L(452, 204, 328, 432, 'pl-laser');
+      },
+      cams: [[26, 126, 10, 170, 'C'], [774, 126, 170, 170, 'C'], [26, 166, 45, 170, 'S3'], [326, 166, 60, 150, 'S2'], [774, 166, 135, 230, 'S1']],
+      guards: [[455, 64], [560, 64], [170, 300]],
+      patrols: ['M70 210H190V440H70Z'],
+      entries: [[735, 100, 'égout', 'middle', 0, -16], [20, 430, 'rampe → rue', 'start', 12, 16]],
+    },
+    {
+      key: 'rdc', level: 'Niveau 0', name: 'Rez-de-chaussée',
+      rooms: [
+        ['C', 'Couloir', 20, 120, 760, 40, 'tile'],
+        ['R1', 'Grand hall', 20, 160, 540, 300, 'marble', 290, 190],
+        ['R2', 'Bureau Ferrand', 560, 160, 220, 140, 'wood', 670, 290],
+        ['R3', 'Conseillers', 560, 300, 220, 160, 'carpet', 670, 440],
+        ['R4', 'Vestiaires', 20, 20, 180, 100, 'tile', 110, 112],
+        ['R5', 'Comptage', 200, 20, 140, 100, 'carpet', 270, 112],
+        ['R6', 'PC sécurité', 440, 20, 160, 100, 'carpet', 520, 112],
+        ['R7', 'Service', 600, 20, 180, 100, 'concrete', 690, 112],
+      ],
+      body() {
+        let s = '';
+        // R1 : comptoir des guichets (côté personnel au nord), files d'attente, verrière, DAB, banquettes
+        s += R(60, 232, 460, 14, 'pl-counter');
+        for (let i = 0; i < 9; i++) s += chair(86 + i * 50, 218, 0) + L(110 + i * 50, 232, 110 + i * 50, 246, 'pl-fl');
+        for (let x = 110; x <= 470; x += 30) s += C(x, 272, 2.5, 'pl-post');
+        s += L(110, 272, 470, 272, 'pl-rope');
+        s += R(140, 290, 300, 140, 'pl-skyline') + T(290, 302, 'verrière au-dessus (12 m)', 'pl-tiny');
+        s += C(290, 362, 22) + C(290, 362, 12, 'pl-fl') + T(290, 395, 'accueil', 'pl-tiny');
+        s += R(26, 300, 12, 24, 'pl-furn') + R(26, 334, 12, 24, 'pl-furn') + T(50, 332, 'DAB', 'pl-tiny', 'start');
+        s += R(170, 412, 60, 14, 'pl-furn') + R(350, 412, 60, 14, 'pl-furn');
+        s += C(40, 440, 9, 'pl-plant') + C(540, 440, 9, 'pl-plant') + C(540, 180, 9, 'pl-plant');
+        // R2 : bureau du directeur
+        s += desk(640, 196, 80, 34) + chair(680, 244, 180) + chair(660, 184, 0) + chair(700, 184, 0);
+        s += R(764, 172, 10, 110, 'pl-furn') + R(578, 262, 60, 16, 'pl-furn') + C(590, 180, 8, 'pl-plant');
+        // R3 : postes des conseillers
+        [[590, 318], [690, 318], [590, 378], [690, 378]].forEach(([x, y]) => (s += desk(x, y, 64, 26) + chair(x + 32, y + 36, 180) + chair(x + 32, y - 9, 0)));
+        // R4 : casiers et bancs
+        for (let i = 0; i < 10; i++) s += R(28 + i * 16, 26, 14, 18, 'pl-box');
+        s += R(40, 70, 130, 10, 'pl-furn') + T(105, 96, 'uniformes', 'pl-tiny');
+        // R5 : table de comptage et sacs
+        s += desk(216, 34, 110, 28) + R(226, 38, 18, 12, 'pl-furn2');
+        [[230, 80], [250, 84], [270, 80], [290, 84], [310, 80], [322, 92]].forEach(([x, y]) => (s += C(x, y, 7, 'pl-bag')));
+        // R6 : mur d'écrans, pupitre
+        s += R(450, 26, 140, 10, 'pl-screens');
+        for (let i = 0; i < 6; i++) s += R(453 + i * 23, 28, 20, 6, 'pl-screen');
+        s += `<path class="pl-furn" d="M462 56h116v22h-12v-10h-92v10h-12z"/>` + chair(500, 88, 180) + chair(540, 88, 180);
+        // R7 : chariots du traiteur
+        s += R(620, 40, 36, 22, 'pl-furn') + R(664, 40, 36, 22, 'pl-furn') + T(660, 80, 'chariots', 'pl-tiny');
+        s += vent(742, 30, 26);
+        s += stairs(340, 20, 60, 100) + lift(400, 20, 40, 100);
+        return s;
+      },
+      doors: [[100, 120, 26, 'h', -1], [255, 120, 26, 'h', -1], [350, 120, 40, 'h', 0], [406, 120, 28, 'h', 0], [500, 120, 26, 'h', -1], [650, 120, 26, 'h', -1],
+        [360, 160, 30, 'h', 1], [420, 160, -30, 'h', 1], [560, 240, 26, 'v', 1], [560, 380, 26, 'v', 1], [780, 52, 30, 'v', -1, 14]],
+      windows: [[60, 460, 130, 460], [160, 460, 240, 460], [340, 460, 420, 460], [450, 460, 520, 460], [600, 460, 680, 460], [700, 460, 760, 460],
+        [20, 190, 20, 260], [20, 380, 20, 440], [780, 180, 780, 250], [780, 330, 780, 400]],
+      special: () => `<g class="pl-revolve"><circle cx="290" cy="460" r="20"/><line x1="270" y1="460" x2="310" y2="460"/><line x1="290" y1="440" x2="290" y2="480"/></g>` + R(254, 455, 14, 10, 'pl-gap') + R(312, 455, 14, 10, 'pl-gap'),
+      lasers: () => '',
+      cams: [[26, 166, 40, 220, 'R1'], [554, 166, 140, 220, 'R1'], [290, 452, -90, 170, 'R1'], [334, 26, 135, 110, 'R5'], [774, 126, 180, 170, 'C'], [606, 26, 30, 110, 'R7']],
+      guards: [[120, 380], [588, 90]],
+      patrols: ['M60 290H120V440H460V290H520'],
+      entries: [[290, 474, 'entrée principale', 'start', 10, 4], [780, 67, 'ruelle', 'end', -14, -10]],
+    },
+    {
+      key: 'etage', level: 'Niveau 1', name: 'Premier étage',
+      rooms: [
+        ['C', 'Couloir', 20, 120, 760, 40, 'tile'],
+        ['F1', 'Salon de réception', 20, 160, 540, 300, 'wood', 290, 262],
+        ['F2', 'Open space', 560, 160, 220, 140, 'carpet', 670, 290],
+        ['F3', 'Bar du gala', 560, 300, 220, 160, 'wood', 670, 444],
+        ['F4', 'Salle des serveurs', 20, 20, 180, 100, 'metal', 110, 112],
+        ['F5', 'Office traiteur', 200, 20, 140, 100, 'tile', 270, 112],
+        ['F6', 'Salle de réunion', 440, 20, 160, 100, 'carpet', 520, 112],
+        ['F7', 'Bureau Valmont', 600, 20, 180, 100, 'wood', 690, 112],
+      ],
+      body() {
+        let s = '';
+        // F1 : vide sur le hall, garde-corps, scène, tables rondes
+        s += R(140, 290, 300, 140, 'pl-void') + R(134, 284, 312, 152, 'pl-rail');
+        s += T(290, 366, 'vide sur le hall', 'pl-tiny');
+        s += R(470, 176, 80, 54, 'pl-stage') + T(510, 207, 'scène', 'pl-tiny');
+        [[490, 192], [510, 192], [530, 192], [500, 214]].forEach(([x, y]) => (s += C(x, y, 4, 'pl-furn')));
+        [[78, 210], [78, 300], [78, 390], [205, 215], [310, 215], [410, 230], [500, 290], [500, 370], [500, 435]].forEach(([x, y]) => (s += table(x, y, 13, 6)));
+        s += R(160, 442, 260, 8, 'pl-furn') + T(290, 449, 'buffet', 'pl-tiny');
+        // F2 : open space
+        [[580, 180], [680, 180], [580, 240], [680, 240]].forEach(([x, y]) => (s += desk(x, y, 70, 24) + chair(x + 35, y + 33, 180)));
+        // F3 : bar et salon
+        s += `<path class="pl-counter" d="M590 318h170v16h-154v60h-16z"/>`;
+        for (let i = 0; i < 6; i++) s += C(616 + i * 24, 346, 5, 'pl-furn');
+        s += table(650, 398, 12, 4) + table(720, 398, 12, 4);
+        // F4 : baies de serveurs
+        for (let r = 0; r < 3; r++) { s += R(34, 30 + r * 26, 150, 16, 'pl-rack'); for (let i = 0; i < 10; i++) s += L(38 + i * 15, 33 + r * 26, 38 + i * 15, 43 + r * 26, 'pl-led'); }
+        // F5 : cuisine du traiteur
+        s += R(206, 26, 128, 14, 'pl-counter') + R(232, 58, 76, 24, 'pl-counter') + R(212, 84, 26, 16, 'pl-furn');
+        // F6 : salle de réunion
+        s += R(470, 46, 100, 36, 'pl-furn') + [480, 505, 530, 555].map((x) => chair(x, 38, 0) + chair(x, 90, 180)).join('');
+        // F7 : bureau d'Hélène, tableau qui cache le coffre
+        s += desk(690, 36, 64, 28) + chair(722, 72, 180) + R(612, 24, 34, 7, 'pl-painting') + T(629, 44, 'tableau', 'pl-tiny');
+        s += R(616, 84, 50, 16, 'pl-furn') + C(764, 104, 8, 'pl-plant');
+        s += vent(742, 30, 26);
+        s += stairs(340, 20, 60, 100) + lift(400, 20, 40, 100);
+        return s;
+      },
+      doors: [[100, 120, 26, 'h', -1], [255, 120, 26, 'h', -1], [350, 120, 40, 'h', 0], [406, 120, 28, 'h', 0], [500, 120, 26, 'h', -1], [650, 120, 26, 'h', -1],
+        [360, 160, 30, 'h', 1], [420, 160, -30, 'h', 1], [560, 240, 26, 'v', 1], [560, 340, 60, 'v', 0]],
+      windows: [[60, 460, 130, 460], [160, 460, 240, 460], [340, 460, 420, 460], [450, 460, 520, 460], [600, 460, 680, 460], [700, 460, 760, 460],
+        [20, 190, 20, 260], [20, 380, 20, 440], [780, 180, 780, 250], [780, 330, 780, 400], [470, 20, 570, 20], [640, 20, 700, 20]],
+      special: () => '',
+      lasers: () => '',
+      cams: [[26, 126, 10, 170, 'C'], [26, 166, 40, 220, 'F1'], [554, 166, 140, 220, 'F1'], [194, 26, 135, 120, 'F4'], [774, 166, 135, 160, 'F2']],
+      guards: [[40, 252], [535, 255]],
+      patrols: ['M112 262H468V448H112Z'],
+      entries: [[520, 20, 'fenêtre → toit', 'middle', 0, -8]],
+    },
+    {
+      key: 'toit', level: 'Toit', name: 'Toiture', roof: true,
+      rooms: [
+        ['T1', 'Verrière', 140, 290, 300, 140, 'glass', 290, 362],
+        ['T2', 'Cabanon', 340, 20, 100, 100, 'concrete', 390, 72],
+        ['T3', 'Climatisation', 580, 180, 180, 110, 'roofdark', 670, 304],
+        ['T4', 'Gaine', 730, 30, 40, 40, 'roofdark', 750, 92],
+        ['T5', 'Antenne relais', 40, 40, 110, 80, 'roofdark', 95, 136],
+        ['T6', 'Rebord est', 700, 340, 80, 120, 'hatch', 730, 330],
+        ['T7', 'Échelle', 20, 200, 40, 100, 'roofdark', 92, 254],
+      ],
+      body() {
+        let s = '';
+        for (let x = 170; x < 440; x += 30) s += L(x, 290, x, 430, 'pl-mullion');
+        for (let y = 318; y < 430; y += 28) s += L(140, y, 440, y, 'pl-mullion');
+        [0, 1, 2].forEach((i) => (s += R(592 + i * 56, 202, 46, 46, 'pl-furn') + C(615 + i * 56, 225, 17, 'pl-fl') + L(615 + i * 56 - 12, 225, 615 + i * 56 + 12, 225) + L(615 + i * 56, 213, 615 + i * 56, 237)));
+        s += `<path class="pl-mast" d="M95 52V112M83 112L95 52L107 112M86 96H104M89 80H101"/>` + C(128, 66, 10, 'pl-furn');
+        for (let y = 208; y < 300; y += 11) s += L(24, y, 56, y, 'pl-fl');
+        s += L(24, 200, 24, 300, 'pl-fl2') + L(56, 200, 56, 300, 'pl-fl2');
+        [[250, 80], [290, 80], [520, 420], [180, 160]].forEach(([x, y]) => (s += R(x - 7, y - 7, 14, 14, 'pl-furn')));
+        s += vent(735, 35, 30) + stairs(352, 30, 44, 76, '');
+        return s;
+      },
+      doors: [[372, 120, 30, 'h', 1]],
+      windows: [],
+      special: () => `<path class="pl-arrow" d="M760 400H792" marker-end="url(#ARW)"/>`,
+      lasers: () => '',
+      cams: [[430, 114, 90, 170, null]],
+      guards: [[380, 446]],
+      patrols: ['M98 150H676V446H98Z'],
+      entries: [[780, 380, 'toit voisin +3 m', 'end', -8, -10], [40, 200, 'depuis la ruelle', 'start', 26, -8]],
+    },
+  ];
+
+  const byKey = Object.fromEntries(FLOORS.map((x) => [x.key, x]));
+
+  function patterns(p) {
+    return `
+    <pattern id="${p}tile" width="20" height="20" patternUnits="userSpaceOnUse"><rect width="20" height="20" fill="var(--pl-floor)"/><path d="M0 0H20V20" fill="none" stroke="var(--pl-tile)" stroke-width="1"/></pattern>
+    <pattern id="${p}marble" width="28" height="28" patternUnits="userSpaceOnUse"><rect width="28" height="28" fill="var(--pl-floor)"/><rect width="14" height="14" fill="var(--pl-tile)"/><rect x="14" y="14" width="14" height="14" fill="var(--pl-tile)"/></pattern>
+    <pattern id="${p}wood" width="48" height="9" patternUnits="userSpaceOnUse"><rect width="48" height="9" fill="var(--pl-wood)"/><path d="M0 8.5H48M20 0V9" stroke="var(--pl-woodline)" stroke-width="1"/></pattern>
+    <pattern id="${p}carpet" width="6" height="6" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="var(--pl-carpet)"/><circle cx="3" cy="3" r=".7" fill="var(--pl-speck)"/></pattern>
+    <pattern id="${p}concrete" width="34" height="34" patternUnits="userSpaceOnUse"><rect width="34" height="34" fill="var(--pl-concrete)"/><circle cx="6" cy="9" r="1" fill="var(--pl-speck)"/><circle cx="22" cy="4" r=".8" fill="var(--pl-speck)"/><circle cx="27" cy="24" r="1.2" fill="var(--pl-speck)"/><circle cx="12" cy="28" r=".7" fill="var(--pl-speck)"/></pattern>
+    <pattern id="${p}metal" width="12" height="12" patternUnits="userSpaceOnUse"><rect width="12" height="12" fill="var(--pl-metal)"/><path d="M2 4l3-2M8 10l3-2M8 4l-3-2M2 10l3-2" stroke="var(--pl-speck)" stroke-width="1"/></pattern>
+    <pattern id="${p}gravel" width="11" height="11" patternUnits="userSpaceOnUse"><rect width="11" height="11" fill="var(--pl-roof)"/><circle cx="2" cy="3" r=".9" fill="var(--pl-speck)"/><circle cx="7" cy="8" r="1.1" fill="var(--pl-speck)"/><circle cx="9" cy="2" r=".6" fill="var(--pl-speck)"/></pattern>
+    <pattern id="${p}hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="var(--pl-roof)"/><path d="M0 0V8" stroke="var(--pl-red)" stroke-width="2" opacity=".35"/></pattern>
+    <pattern id="${p}void" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="var(--pl-bg)"/><path d="M0 0V8" stroke="var(--pl-speck)" stroke-width="1"/></pattern>
+    <marker id="${p}ARW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--pl-text)"/></marker>
+    <marker id="${p}PAT" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--pl-red)"/></marker>`;
+  }
+
+  const FILL = { tile: 'tile', marble: 'marble', wood: 'wood', carpet: 'carpet', concrete: 'concrete', metal: 'metal', roofdark: 'gravel', hatch: 'hatch', glass: null };
+
+  function roomRect(fl, id) {
+    const r = fl.rooms.find((x) => x[0] === id);
+    return r ? { id: r[0], name: r[1], x: r[2], y: r[3], w: r[4], h: r[5], lx: r[7], ly: r[8] } : null;
+  }
+
+  // caméra : 'show' visible, 'off' coupée, 'ghost' cachée (vue MJ seulement), 'ghostoff' cachée et coupée
+  function cam(p, fl, [x, y, a, range, clipId], i, mode, hit) {
+    if (mode === 'hide') return '';
+    const sp = 64, a1 = ((a - sp / 2) * Math.PI) / 180, a2 = ((a + sp / 2) * Math.PI) / 180;
+    const x1 = f(x + range * Math.cos(a1)), y1 = f(y + range * Math.sin(a1)), x2 = f(x + range * Math.cos(a2)), y2 = f(y + range * Math.sin(a2));
+    const rr = clipId ? roomRect(fl, clipId) : { x: 20, y: 20, w: 760, h: 440 };
+    const cid = `${p}cam${i}`, off = mode === 'off' || mode === 'ghostoff', ghost = mode.startsWith('ghost');
+    return `<g class="pl-camg ${off ? 'is-off' : ''} ${ghost ? 'is-ghost' : ''}" ${hit ? `data-cam="${i}"` : ''}><clipPath id="${cid}"><rect x="${rr.x}" y="${rr.y}" width="${rr.w}" height="${rr.h}"/></clipPath>
+      <path clip-path="url(#${cid})" class="pl-cone" d="M${x} ${y}L${x1} ${y1}A${range} ${range} 0 0 1 ${x2} ${y2}Z"/>
+      <g transform="translate(${x} ${y}) rotate(${a})" class="pl-camico"><rect x="-7" y="-4.5" width="11" height="9" rx="1.5"/><rect x="4" y="-3" width="4" height="6"/></g>
+      ${off ? `<path class="pl-x" d="M${x - 7} ${y - 7}L${x + 7} ${y + 7}M${x + 7} ${y - 7}L${x - 7} ${y + 7}"/>` : ''}
+      ${hit ? `<circle cx="${x}" cy="${y}" r="16" class="pl-hit"/>` : ''}</g>`;
+  }
+  // garde : 'show', 'down' (neutralisé), 'ghost', 'ghostdown'
+  function guard(x, y, mode, i, hit) {
+    if (mode === 'hide') return '';
+    const down = mode === 'down' || mode === 'ghostdown', ghost = mode.startsWith('ghost');
+    return `<g class="pl-guard ${down ? 'is-down' : ''} ${ghost ? 'is-ghost' : ''}" transform="translate(${f(x)} ${f(y)})" ${hit ? `data-guard="${i}"` : ''}><circle r="11" class="pl-guardhalo"/><ellipse rx="8" ry="4.5"/><circle r="3.6" class="pl-guardhead"/>${down ? '<path class="pl-x" d="M-8 -8L8 8M8 -8L-8 8"/>' : ''}${hit ? '<circle r="18" class="pl-hit"/>' : ''}</g>`;
+  }
+  const asMode = (v, on) => typeof v === 'string' ? v : v === false ? 'hide' : on;
+
+  function svg(key, opts = {}) {
+    const fl = byKey[key];
+    if (!fl) return '';
+    const o = Object.assign({ cams: true, guards: true, lasers: true, labels: true, tokens: [], hit: false }, opts);
+    const camMode = typeof o.cam === 'function' ? o.cam : () => (o.cams ? 'show' : 'hide');
+    const guardOf = typeof o.guard === 'function' ? o.guard : () => ({ mode: o.guards ? 'show' : 'hide' });
+    const fogged = typeof o.fog === 'function' ? o.fog : () => false;
+    const p = `vp${++uid}_`;
+    const fix = (s) => s.replace(/url\(#ARW\)/g, `url(#${p}ARW)`);
+    let s = `<svg class="vplan" viewBox="0 0 800 500" role="img" aria-label="Plan : ${fl.name}"><defs>${patterns(p)}<clipPath id="${p}tc"><circle r="14"/></clipPath></defs>`;
+    s += `<rect x="0" y="0" width="800" height="500" class="pl-bgr"/>`;
+    // sols
+    if (fl.roof) s += R(20, 20, 760, 440, 'pl-floor', `fill="url(#${p}gravel)"`);
+    fl.rooms.forEach(([id, , x, y, w, h, sol]) => {
+      if (sol === 'glass') s += R(x, y, w, h, 'pl-glasspane');
+      else s += R(x, y, w, h, 'pl-floor', `fill="url(#${p}${FILL[sol] || 'tile'})"`);
+    });
+    if (!fl.roof) s += R(340, 20, 100, 100, 'pl-floor', `fill="var(--pl-floor)"`);
+    s += fix(fl.body());
+    // murs
+    fl.rooms.forEach(([id, , x, y, w, h]) => {
+      if (fl.roof) { s += R(x, y, w, h, ['T2', 'T4'].includes(id) ? 'pl-wall' : 'pl-zone'); return; }
+      s += R(x, y, w, h, (fl.vault || []).includes(id) ? 'pl-wall pl-vault' : 'pl-wall');
+    });
+    if (!fl.roof) s += R(340, 20, 100, 100, 'pl-wall') + L(400, 20, 400, 120, 'pl-wall');
+    s += R(20, 20, 760, 440, fl.roof ? 'pl-parapet' : 'pl-ext');
+    fl.windows.forEach((w) => (s += win(...w)));
+    fl.doors.forEach(([x, y, len, or, sw, t]) => (s += door(x, y, len, or, sw, t || 8)));
+    s += fix(fl.special());
+    fl.entries.forEach(([x, y, t, a, dx, dy]) => (s += `<g class="pl-entry"><circle cx="${x}" cy="${y}" r="6"/></g><text class="pl-entrytxt" x="${x + dx}" y="${y + dy}" text-anchor="${a}">${t}</text>`));
+    if (o.labels) fl.rooms.forEach(([id, name, x, y, w, h, , lx, ly]) => {
+      if (id === 'C') return s += T(70, 145, 'couloir', 'pl-tiny');
+      const cx = lx ?? x + w / 2, cy = ly ?? y + h / 2;
+      const tw = name.length * 6.6 + 30;
+      s += `<g class="pl-label" transform="translate(${cx} ${cy})"><rect x="${f(-tw / 2)}" y="-9" width="${f(tw)}" height="16" rx="3"/><text x="${f(-tw / 2 + 5)}" y="3" class="pl-lid">${id}</text><text x="${f(-tw / 2 + 25)}" y="3" class="pl-lname">${name}</text></g>`;
+    });
+    // brouillard : pièces pas encore découvertes ('ghost' = le MJ voit au travers)
+    fl.rooms.forEach(([id, name, x, y, w, h]) => {
+      const fg = fogged(id);
+      if (!fg) return;
+      s += `<g class="pl-fog ${fg === 'ghost' ? 'is-ghost' : ''}" ${o.hit ? `data-room="${id}"` : ''}>${R(x, y, w, h, 'pl-fogr')}${w > 60 && h > 40 ? `<text x="${x + w / 2}" y="${y + h / 2 + 6}" text-anchor="middle" class="pl-fogq">?</text>` : ''}</g>`;
+    });
+    if (o.hit) fl.rooms.forEach(([id, , x, y, w, h]) => { if (!fogged(id)) s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" class="pl-roomhit" data-room="${id}"/>`; });
+    // sécurité, par-dessus le brouillard une fois révélée
+    const lm = asMode(o.lasers, 'show');
+    if (lm !== 'hide') s += `<g class="pl-lasers ${lm === 'off' || lm === 'ghostoff' ? 'is-off' : ''} ${lm.startsWith('ghost') ? 'is-ghost' : ''}" ${o.hit ? 'data-lasers="1"' : ''}>${fl.lasers()}${o.hit && fl.lasers() ? '<rect x="320" y="190" width="140" height="250" class="pl-hit"/>' : ''}</g>`;
+    fl.cams.forEach((c, i) => (s += cam(p, fl, c, i, camMode(i), o.hit)));
+    const gs = fl.guards.map((g, i) => { const v = guardOf(i) || {}; return { x: v.x ?? g[0], y: v.y ?? g[1], mode: v.mode || 'hide' }; });
+    if (o.patrols ?? gs.some((g) => g.mode === 'show')) fl.patrols.forEach((d) => (s += `<path class="pl-patrol" d="${d}" marker-mid="url(#${p}PAT)" marker-end="url(#${p}PAT)"/>`));
+    gs.forEach((g, i) => (s += guard(g.x, g.y, g.mode, i, o.hit)));
+    // jetons de l'équipe : position libre (x, y) avec portrait, ou ancienne forme par pièce
+    const legacy = {};
+    (o.tokens || []).forEach((t) => {
+      if (t.x == null) { if (roomRect(fl, t.room)) (legacy[t.room] = legacy[t.room] || []).push(t); return; }
+      s += `<g class="pl-token ${t.sel ? 'is-sel' : ''}" transform="translate(${f(t.x)} ${f(t.y)})" ${o.hit ? `data-tok="${t.id}"` : ''}>
+        ${t.sel ? '<circle r="22" class="pl-tsel"/>' : ''}<circle r="16" style="fill:${t.color}"/>
+        ${t.img ? `<image href="${t.img}" x="-14" y="-14" width="28" height="28" clip-path="url(#${p}tc)" preserveAspectRatio="xMidYMid slice"/>` : `<text y="4.5" text-anchor="middle">${t.text || ''}</text>`}
+        <circle r="15" class="pl-tring" style="stroke:${t.color}"/>${t.down ? '<path class="pl-x" d="M-10 -10L10 10M10 -10L-10 10"/>' : ''}
+        ${t.label ? `<text y="29" text-anchor="middle" class="pl-tname">${t.label}</text>` : ''}${o.hit ? '<circle r="24" class="pl-hit"/>' : ''}</g>`;
+    });
+    Object.entries(legacy).forEach(([rid, list]) => {
+      const r = roomRect(fl, rid);
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2 + (rid === 'C' ? 0 : 22);
+      list.forEach((t, i) => {
+        const x = f(cx + (i - (list.length - 1) / 2) * 30);
+        s += `<g class="pl-token" transform="translate(${x} ${cy})"><circle r="13" style="fill:${t.color}"/><text y="4.5" text-anchor="middle">${t.text}</text></g>`;
+      });
+    });
+    if (o.ping) s += `<g class="pl-ping" transform="translate(${f(o.ping.x)} ${f(o.ping.y)})"><circle r="9"/><circle r="9" class="pl-wave"/><circle r="9" class="pl-wave w2"/></g>`;
+    // échelle et nord
+    s += `<g class="pl-scale" transform="translate(24 482)"><rect width="100" height="5" class="pl-sc1"/><rect x="100" width="100" height="5" class="pl-sc2"/><text x="0" y="16">0</text><text x="100" y="16" text-anchor="middle">5 m</text><text x="200" y="16" text-anchor="middle">10 m</text></g>`;
+    s += `<g class="pl-north" transform="translate(772 484)"><path d="M0 -14L6 6L0 2L-6 6Z"/><text y="-17" text-anchor="middle">N</text></g>`;
+    return s + '</svg>';
+  }
+  // pièce sous un point (la plus petite qui le contient)
+  function roomAt(key, x, y) {
+    const fl = byKey[key];
+    if (!fl) return null;
+    const hit = fl.rooms.filter(([, , rx, ry, w, h]) => x >= rx && x <= rx + w && y >= ry && y <= ry + h).sort((a, b) => a[4] * a[5] - b[4] * b[5])[0];
+    if (hit) return { id: hit[0], name: hit[1] };
+    if (!fl.roof && x >= 340 && x <= 440 && y >= 20 && y <= 120) return { id: 'ESC', name: 'Escalier' };
+    return fl.roof && x >= 20 && x <= 780 && y >= 20 && y <= 460 ? { id: 'TOIT', name: 'Toit' } : null;
+  }
+
+  const STYLE = `
+  .vplan{display:block;width:100%;height:auto;font-family:var(--pl-font,ui-monospace,Menlo,monospace)}
+  .vplan .pl-bgr{fill:var(--pl-bg)}
+  .vplan .pl-wall{fill:none;stroke:var(--pl-wall);stroke-width:5}
+  .vplan .pl-vault{stroke-width:13}
+  .vplan .pl-ext{fill:none;stroke:var(--pl-wall);stroke-width:11}
+  .vplan .pl-parapet{fill:none;stroke:var(--pl-wall);stroke-width:7}
+  .vplan .pl-zone{fill:none;stroke:var(--pl-furnline);stroke-width:1.2;stroke-dasharray:5 4}
+  .vplan .pl-gap{fill:var(--pl-floor);stroke:none}
+  .vplan .pl-leaf{stroke:var(--pl-wall);stroke-width:2}
+  .vplan .pl-swing{fill:none;stroke:var(--pl-furnline);stroke-width:.8;stroke-dasharray:3 2}
+  .vplan .pl-win{fill:var(--pl-glass);stroke:var(--pl-wall);stroke-width:1}
+  .vplan .pl-winl{stroke:var(--pl-wall);stroke-width:1}
+  .vplan .pl-furn{fill:var(--pl-furn);stroke:var(--pl-furnline);stroke-width:1}
+  .vplan .pl-furn2{fill:var(--pl-furnline);stroke:none}
+  .vplan .pl-fl{stroke:var(--pl-furnline);stroke-width:.9;fill:none}
+  .vplan .pl-fl2{stroke:var(--pl-furnline);stroke-width:2;fill:none}
+  .vplan .pl-box{fill:var(--pl-furn);stroke:var(--pl-furnline);stroke-width:.7}
+  .vplan .pl-pallet{fill:var(--pl-woodline);stroke:var(--pl-furnline);stroke-width:1}
+  .vplan .pl-goldbar,.vplan .pl-bag{fill:var(--pl-gold);stroke:var(--pl-furnline);stroke-width:.6}
+  .vplan .pl-counter{fill:var(--pl-furn);stroke:var(--pl-wall);stroke-width:1.6}
+  .vplan .pl-post{fill:var(--pl-furnline)}
+  .vplan .pl-rope{stroke:var(--pl-red);stroke-width:1;opacity:.6}
+  .vplan .pl-skyline{fill:none;stroke:var(--pl-furnline);stroke-width:1.2;stroke-dasharray:8 5}
+  .vplan .pl-void{fill:var(--pl-bg);stroke:none;opacity:.85}
+  .vplan .pl-rail{fill:none;stroke:var(--pl-wall);stroke-width:2.5}
+  .vplan .pl-stage{fill:var(--pl-woodline);stroke:var(--pl-furnline);stroke-width:1}
+  .vplan .pl-plant{fill:var(--pl-green);stroke:var(--pl-furnline);stroke-width:.8;opacity:.75}
+  .vplan .pl-pillar{fill:var(--pl-wall)}
+  .vplan .pl-bay{fill:none;stroke:var(--pl-gold);stroke-width:1.5;stroke-dasharray:6 4}
+  .vplan .pl-stair{fill:var(--pl-floor);stroke:var(--pl-furnline);stroke-width:1}
+  .vplan .pl-arrow{fill:none;stroke:var(--pl-text);stroke-width:1.3}
+  .vplan .pl-pipe{fill:none;stroke:var(--pl-furnline);stroke-width:3;stroke-linecap:round}
+  .vplan .pl-grate{fill:var(--pl-floor);stroke:var(--pl-green);stroke-width:2}
+  .vplan .pl-bolt{fill:var(--pl-gold)}
+  .vplan .pl-screens{fill:var(--pl-wall)}
+  .vplan .pl-screen{fill:var(--pl-glass)}
+  .vplan .pl-rack{fill:var(--pl-wall);stroke:none}
+  .vplan .pl-led{stroke:var(--pl-green);stroke-width:1.4}
+  .vplan .pl-painting{fill:var(--pl-gold);stroke:var(--pl-wall);stroke-width:1}
+  .vplan .pl-glasspane{fill:var(--pl-glass);stroke:var(--pl-wall);stroke-width:2}
+  .vplan .pl-glassf{fill:var(--pl-glass)}
+  .vplan .pl-mullion{stroke:var(--pl-wall);stroke-width:1.2;opacity:.7}
+  .vplan .pl-mast{fill:none;stroke:var(--pl-wall);stroke-width:2}
+  .vplan .pl-vaultdoor circle,.vplan .pl-vaultdoor line{fill:var(--pl-metal);stroke:var(--pl-gold);stroke-width:2.5}
+  .vplan .pl-revolve circle{fill:var(--pl-glass);stroke:var(--pl-wall);stroke-width:1.6}
+  .vplan .pl-revolve line{stroke:var(--pl-wall);stroke-width:2}
+  .vplan .pl-shutter{stroke:var(--pl-gold);stroke-width:3;stroke-dasharray:4 3}
+  .vplan .pl-laser{stroke:var(--pl-red);stroke-width:1.3;opacity:.85}
+  .vplan .pl-emit{fill:var(--pl-red)}
+  .vplan .pl-cone{fill:var(--pl-red);fill-opacity:.13;stroke:var(--pl-red);stroke-opacity:.45;stroke-width:1}
+  .vplan .pl-camico rect{fill:var(--pl-red);stroke:var(--pl-bg);stroke-width:1}
+  .vplan .pl-guard ellipse,.vplan .pl-guard .pl-guardhead{fill:var(--pl-red);stroke:var(--pl-bg);stroke-width:1}
+  .vplan .pl-guardhalo{fill:var(--pl-red);opacity:.18}
+  .vplan .pl-patrol{fill:none;stroke:var(--pl-red);stroke-width:1.4;stroke-dasharray:2 5;opacity:.75}
+  .vplan .pl-entry circle{fill:var(--pl-green);stroke:var(--pl-bg);stroke-width:2}
+  .vplan .pl-entrytxt{fill:var(--pl-green);font-size:11px;font-weight:700;paint-order:stroke;stroke:var(--pl-bg);stroke-width:4px}
+  .vplan .pl-note,.vplan .pl-tiny{fill:var(--pl-furnline);font-size:9px;paint-order:stroke;stroke:var(--pl-floor);stroke-width:3px}
+  .vplan .pl-label rect{fill:var(--pl-labelbg);stroke:var(--pl-wall);stroke-width:1}
+  .vplan .pl-lid{fill:var(--pl-gold);font-size:10.5px;font-weight:700}
+  .vplan .pl-lname{fill:var(--pl-text);font-size:10.5px;font-weight:600}
+  .vplan .pl-token circle{stroke:var(--pl-bg);stroke-width:3}
+  .vplan .pl-token text{fill:#fff;font-size:11px;font-weight:700;font-family:var(--pl-font,monospace)}
+  .vplan .pl-scale text,.vplan .pl-north text{fill:var(--pl-text);font-size:9px}
+  .vplan .pl-sc1{fill:var(--pl-text)} .vplan .pl-sc2{fill:none;stroke:var(--pl-text);stroke-width:1}
+  .vplan .pl-north path{fill:var(--pl-text)}
+  .vplan .pl-hit{fill:transparent;stroke:none;cursor:pointer}
+  .vplan .pl-cone,.vplan .pl-patrol,.vplan .pl-label,.vplan .pl-tname{pointer-events:none}
+  .vplan .pl-roomhit{fill:transparent;stroke:none}
+  .vplan .pl-x{stroke:var(--pl-red);stroke-width:2.6;stroke-linecap:round;fill:none}
+  .vplan .is-off .pl-cone{fill:none;stroke:var(--pl-furnline);stroke-dasharray:4 4;stroke-opacity:.7}
+  .vplan .is-off .pl-camico rect{fill:var(--pl-furnline)}
+  .vplan .pl-lasers.is-off .pl-laser{stroke:var(--pl-furnline);opacity:.35}
+  .vplan .is-down ellipse,.vplan .is-down .pl-guardhead{fill:var(--pl-furnline)}
+  .vplan .is-down .pl-guardhalo{opacity:0}
+  .vplan .is-ghost{opacity:.38}
+  .vplan .pl-fogr{fill:var(--pl-fog,#05080c);stroke:var(--pl-wall);stroke-width:1;stroke-opacity:.4}
+  .vplan .pl-fog.is-ghost .pl-fogr{opacity:.55}
+  .vplan .pl-fogq{fill:var(--pl-furnline);font-size:22px;font-weight:700;opacity:.6}
+  .vplan .pl-tring{fill:none;stroke-width:3}
+  .vplan .pl-tsel{fill:none;stroke:var(--pl-gold);stroke-width:2;stroke-dasharray:4 3}
+  .vplan .pl-tname{fill:var(--pl-text);font-size:10.5px;font-weight:700;paint-order:stroke;stroke:var(--pl-bg);stroke-width:4px}
+  .vplan .pl-token text{fill:#fff;font-size:11px;font-weight:700}
+  .vplan .pl-token .pl-tname{fill:var(--pl-text)}
+  .vplan .pl-ping circle{fill:none;stroke:var(--pl-gold);stroke-width:3}
+  .vplan .pl-ping .pl-wave{transform-box:fill-box;transform-origin:center;animation:plping 1.4s ease-out infinite}
+  .vplan .pl-ping .w2{animation-delay:.7s}
+  @keyframes plping{from{transform:scale(1);opacity:1}to{transform:scale(5);opacity:0}}
+  @media (prefers-reduced-motion: reduce){.vplan .pl-ping .pl-wave{animation:none;transform:scale(2.4)}}`;
+  if (typeof document !== 'undefined' && !document.getElementById('vplan-style')) {
+    const st = document.createElement('style');
+    st.id = 'vplan-style';
+    st.textContent = STYLE;
+    document.head.appendChild(st);
+  }
+
+  window.ValmontPlans = {
+    floors: FLOORS.map(({ key, level, name }) => ({ key, level, name })),
+    rooms: (key) => byKey[key].rooms.filter((r) => r[0] !== 'C').map((r) => ({ id: r[0], name: r[1] })).concat(byKey[key].roof ? [] : [{ id: 'C', name: 'Couloir' }]),
+    svg,
+    roomAt,
+    info: (key) => { const fl = byKey[key]; return { camList: fl.cams.map((c) => ({ x: c[0], y: c[1] })), cams: fl.cams.length, guards: fl.guards.map((g) => g.slice()), lasers: !!fl.lasers(), rooms: fl.rooms.map(([id, name, x, y, w, h]) => ({ id, name, x, y, w, h })) }; },
+  };
+})();
+
+</script>
+<script>
+/* Intro animée d'Opération Valmont (motion design + effets sonores + voix off), puis l'affiche du film.
+   ValmontIntro.play({ names, onEnd })   joue l'intro en plein écran ; « Passer » ou Échap pour sauter
+   ValmontIntro.poster({ names, onClose }) ouvre l'affiche
+   ValmontIntro.close()                  ferme tout
+   ValmontIntro.LINES                     le texte de la voix off (voix-01 … voix-10)
+   Voix off : fichiers intro/voix-01.mp3 (ou .m4a, .webm, .ogg, .wav), ou enregistrées sur voix.html (même navigateur).
+   Affiche : image scenes/affiche.jpg (ou .webp, .png) ; sans image, une affiche dessinée la remplace. */
+(function () {
+  const LINES = [
+    { id: 'city', t: 'Port-Sainte-Claire. Vendredi soir. 21h30.', d: 5.5 },
+    { id: 'rain', t: 'Il pleut sur la place de la Bourse.', d: 4.5 },
+    { id: 'facade', t: 'En face : la Banque Valmont & Fils. Trois étages de pierre, une verrière sur le toit…', d: 7 },
+    { id: 'vault', t: '… et sous vos pieds, la chambre forte la plus réputée de la région.', d: 6.5 },
+    { id: 'gala', t: 'Ce soir, Hélène Valmont fête les 150 ans de la banque. Soixante invités. Du champagne. Un quatuor à cordes.', d: 8 },
+    { id: 'clock', t: 'Demain, à 6h00, un fourgon blindé viendra tout emporter en Suisse.', d: 6.5 },
+    { id: 'notaire', t: 'À l\'arrière d\'une camionnette, un homme qu\'on appelle le Notaire pose une enveloppe.', d: 6.5 },
+    { id: 'quote', t: '« Casier 117. Une clé USB. Je la veux. Tout le reste est pour vous. »', d: 7 },
+    { id: 'stakes', t: 'Vous avez le matériel. Vous avez les plans. Vous avez jusqu\'à l\'aube.', d: 6.5 },
+    { id: 'title', t: 'Opération Valmont.', d: 5.5 },
+  ];
+  const pad = (n) => String(n).padStart(2, '0');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const S = () => window.ValmontSound;
+  const sfx = (id) => { try { S() && S().play(id); } catch (e) {} };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /* ---------- styles (injectés une fois) ---------- */
+  function css() {
+    if (document.getElementById('vi-css')) return;
+    const st = document.createElement('style'); st.id = 'vi-css';
+    st.textContent = `
+.vi{position:fixed;inset:0;z-index:100;background:#030407;color:#f3ead6;overflow:hidden;font-family:"Archivo",system-ui,sans-serif}
+.vi canvas{position:absolute;inset:0;width:100%;height:100%}
+.vi .stage{position:absolute;inset:0;display:grid;place-items:center;padding:11vh 0 22vh}
+.vi .sub{position:absolute;left:50%;bottom:6vh;transform:translateX(-50%);width:min(1100px,90vw);text-align:center;font:500 clamp(1rem,2.2vw,1.7rem)/1.35 Georgia,serif;font-style:italic;color:#f3ead6;text-shadow:0 2px 12px #000;opacity:0;transition:opacity .5s}
+.vi .sub.on{opacity:1}
+.vi .skip{position:absolute;top:18px;right:18px;z-index:5;background:rgba(0,0,0,.5);color:#f3ead6;border:1px solid rgba(243,234,214,.4);font:600 .9rem "Archivo",sans-serif;padding:8px 14px;cursor:pointer;letter-spacing:.08em}
+.vi .bars:before,.vi .bars:after{content:"";position:absolute;left:0;right:0;height:9vh;background:#000;z-index:4}
+.vi .bars:before{top:0}.vi .bars:after{bottom:0}
+.vi .flash{position:absolute;inset:0;background:#dfe8ff;opacity:0;pointer-events:none;z-index:3}
+.vi .flash.go{animation:viFlash .9s ease-out}
+@keyframes viFlash{0%{opacity:0}8%{opacity:.85}14%{opacity:.1}22%{opacity:.6}100%{opacity:0}}
+.vi .in{animation:viIn 1.2s cubic-bezier(.2,.7,.2,1) both}
+@keyframes viIn{from{opacity:0;transform:translateY(24px) scale(.98);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+.vi .mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;letter-spacing:.2em;text-transform:uppercase}
+.vi .big{font-family:"Saira Stencil One",Impact,"Arial Narrow",sans-serif;letter-spacing:.04em;line-height:.95}
+.vi .gold{color:#e8b64a}.vi .red{color:#ff4d4d}
+.vi .draw path,.vi .draw line,.vi .draw rect,.vi .draw polyline{stroke-dasharray:1600;stroke-dashoffset:1600;animation:viDraw 3.2s ease-in-out forwards}
+@keyframes viDraw{to{stroke-dashoffset:0}}
+.vi .win{fill:#1a1d26;transition:fill .6s}.vi .win.lit{fill:#f5c45a;filter:drop-shadow(0 0 6px #f5c45a)}
+.vi .zoom{animation:viZoom 7s ease-in forwards}
+@keyframes viZoom{from{transform:scale(1)}to{transform:scale(2.3)}}
+.vi .pulse{position:absolute;border:3px solid #ff4d4d;border-radius:50%;animation:viPulse 1.4s ease-out infinite}
+@keyframes viPulse{from{transform:translate(-50%,-50%) scale(.3);opacity:1}to{transform:translate(-50%,-50%) scale(1.6);opacity:0}}
+.vi .spark{position:absolute;width:4px;height:4px;border-radius:50%;background:#f5c45a;box-shadow:0 0 8px #f5c45a;animation:viRise linear infinite}
+@keyframes viRise{from{transform:translateY(10vh);opacity:0}20%{opacity:1}to{transform:translateY(-90vh);opacity:0}}
+.vi .flick{animation:viFlick 2.4s steps(1) infinite}
+@keyframes viFlick{0%,100%{opacity:1}47%{opacity:.25}49%{opacity:1}51%{opacity:.4}53%{opacity:1}}
+.vi .van{animation:viVan 6s linear forwards}
+@keyframes viVan{from{transform:translateX(-30vw)}to{transform:translateX(40vw)}}
+.vi .env{animation:viEnv 1.6s cubic-bezier(.2,.8,.2,1) .6s both}
+@keyframes viEnv{from{transform:translate(40vw,10vh) rotate(25deg);opacity:0}to{transform:rotate(-4deg);opacity:1}}
+.vi .stamp{animation:viStamp .5s cubic-bezier(.3,1.6,.5,1) 2.2s both}
+@keyframes viStamp{from{transform:scale(3) rotate(-12deg);opacity:0}to{transform:scale(1) rotate(-12deg);opacity:1}}
+.vi .slam{animation:viSlam .55s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes viSlam{from{transform:scale(2.6);opacity:0;filter:blur(8px)}to{transform:none;opacity:1;filter:none}}
+.vi .shake{animation:viShake .5s linear}
+@keyframes viShake{0%,100%{transform:none}20%{transform:translate(-8px,4px)}40%{transform:translate(7px,-5px)}60%{transform:translate(-5px,-3px)}80%{transform:translate(4px,5px)}}
+.vi .streak{position:absolute;top:50%;left:-40%;width:40%;height:3px;background:linear-gradient(90deg,transparent,#fff,transparent);animation:viStreak 1.4s ease-in-out .3s both}
+@keyframes viStreak{to{left:110%}}
+.vi .glitch{position:relative}
+.vi .glitch:before,.vi .glitch:after{content:attr(data-t);position:absolute;inset:0;opacity:.7}
+.vi .glitch:before{color:#ff2a4a;transform:translate(-3px,0);animation:viG 2.2s steps(2) infinite}
+.vi .glitch:after{color:#2ad0ff;transform:translate(3px,0);animation:viG 1.7s steps(2) infinite reverse}
+@keyframes viG{0%,90%,100%{clip-path:inset(0 0 100% 0)}92%{clip-path:inset(20% 0 55% 0)}95%{clip-path:inset(60% 0 15% 0)}}
+/* affiche */
+.vp{position:fixed;inset:0;z-index:100;background:radial-gradient(ellipse at center,#14110f 0%,#000 75%);display:grid;place-items:center;padding:2vh}
+.vp .frame{position:relative;height:min(96vh,150vw);aspect-ratio:2/3;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08);animation:vpIn 1.4s cubic-bezier(.2,.8,.2,1) both;background:#0b0d14}
+@keyframes vpIn{from{opacity:0;transform:scale(1.06);filter:brightness(3) blur(10px)}to{opacity:1;transform:none;filter:none}}
+.vp .art{position:absolute;inset:0;background-size:cover;background-position:center;animation:vpKen 30s ease-out forwards}
+@keyframes vpKen{from{transform:scale(1.12)}to{transform:scale(1)}}
+.vp .facade-fb svg{width:100%!important;height:auto}
+.vp .shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.65) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 52%,rgba(0,0,0,.85) 78%,#000 100%)}
+.vp .sweep{position:absolute;top:0;bottom:0;width:30%;left:-40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.18),transparent);animation:vpSweep 2.2s ease-in-out 1.2s both}
+@keyframes vpSweep{to{left:120%}}
+.vp .cast{position:absolute;top:4.5%;left:0;right:0;text-align:center;font:600 2.1vh "Archivo",sans-serif;letter-spacing:.5em;color:#f3ead6;text-transform:uppercase}
+.vp .tag{position:absolute;top:10%;left:8%;right:8%;text-align:center;font:italic 2vh Georgia,serif;color:#e9dcc0;letter-spacing:.05em}
+.vp .ttl{position:absolute;left:4%;right:4%;bottom:19%;text-align:center}
+.vp .ttl small{display:block;font:600 1.6vh "Archivo",sans-serif;letter-spacing:.7em;color:#e8b64a;margin-bottom:1vh}
+.vp .ttl b{display:block;font-family:"Saira Stencil One",Impact,sans-serif;font-weight:400;font-size:8.4vh;line-height:.9;color:#f6efe0;text-shadow:0 4px 30px rgba(0,0,0,.8);letter-spacing:.02em}
+.vp .date{position:absolute;left:0;right:0;bottom:13.5%;text-align:center;font:700 2.2vh "Archivo",sans-serif;letter-spacing:.45em;color:#e8b64a}
+.vp .bill{position:absolute;left:7%;right:7%;bottom:3.5%;text-align:center;font:500 1.05vh/1.25 "Archivo Narrow","Arial Narrow",sans-serif;color:rgba(243,234,214,.72);letter-spacing:.12em;text-transform:uppercase;transform:scaleY(1.35);transform-origin:bottom}
+.vp .bill b{color:#f3ead6;font-weight:700}
+.vp .rate{position:absolute;bottom:1.2%;left:7%;font:700 1.1vh "Archivo",sans-serif;border:1px solid rgba(243,234,214,.6);padding:.2vh .6vh;color:rgba(243,234,214,.8);letter-spacing:.1em}
+.vp .close{position:absolute;top:18px;right:18px;background:rgba(0,0,0,.5);color:#f3ead6;border:1px solid rgba(243,234,214,.4);font:600 .9rem "Archivo",sans-serif;padding:8px 14px;cursor:pointer;letter-spacing:.08em;z-index:2}
+@media (prefers-reduced-motion:reduce){.vi *,.vp *{animation-duration:.01s!important;animation-iteration-count:1!important}}
+`;
+    document.head.appendChild(st);
+  }
+
+  /* ---------- voix off ---------- */
+  const EXT = ['mp3', 'm4a', 'webm', 'ogg', 'wav'];
+  function idbGet(key) {
+    return new Promise((res) => {
+      try {
+        const rq = indexedDB.open('valmont-voix', 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore('voix');
+        rq.onerror = () => res(null);
+        rq.onsuccess = () => { try { const tx = rq.result.transaction('voix', 'readonly'), g = tx.objectStore('voix').get(key); g.onsuccess = () => res(g.result || null); g.onerror = () => res(null); } catch (e) { res(null); } };
+      } catch (e) { res(null); }
+    });
+  }
+  function tryAudio(src) {
+    return new Promise((res) => {
+      const a = new Audio(); let done = false;
+      const fin = (ok) => { if (done) return; done = true; res(ok ? a : null); };
+      a.preload = 'auto'; a.oncanplaythrough = () => fin(true); a.onloadedmetadata = () => fin(true); a.onerror = () => fin(false);
+      setTimeout(() => fin(false), 2500); a.src = src;
+    });
+  }
+  async function voice(i) {
+    const key = 'voix-' + pad(i + 1);
+    const blob = await idbGet(key);
+    if (blob) { const a = await tryAudio(URL.createObjectURL(blob)); if (a) return a; }
+    if (location.protocol === 'file:') return null;
+    for (const e of EXT) { const a = await tryAudio(`intro/${key}.${e}`); if (a) return a; }
+    return null;
+  }
+
+  /* ---------- pluie ---------- */
+  function rain(cv, heavy) {
+    const c = cv.getContext('2d'); let w, h, drops = [], run = true;
+    const size = () => { w = cv.width = cv.clientWidth * devicePixelRatio; h = cv.height = cv.clientHeight * devicePixelRatio; };
+    size(); window.addEventListener('resize', size);
+    const n = () => (heavy.v ? 520 : 220);
+    const mk = () => ({ x: Math.random() * w * 1.2, y: Math.random() * -h, l: 10 + Math.random() * 24, s: 14 + Math.random() * 16 });
+    for (let i = 0; i < 520; i++) drops.push(Object.assign(mk(), { y: Math.random() * h }));
+    (function frame() {
+      if (!run) return;
+      c.clearRect(0, 0, w, h); c.strokeStyle = 'rgba(170,190,230,.35)'; c.lineWidth = devicePixelRatio;
+      c.beginPath();
+      for (let i = 0; i < n(); i++) { const d = drops[i]; c.moveTo(d.x, d.y); c.lineTo(d.x - d.l * 0.25, d.y + d.l); d.y += d.s * devicePixelRatio; d.x -= d.s * 0.25; if (d.y > h) Object.assign(d, mk(), { y: -20 }); }
+      c.stroke(); requestAnimationFrame(frame);
+    })();
+    return { stop() { run = false; window.removeEventListener('resize', size); } };
+  }
+
+  /* ---------- les plans de l'intro ---------- */
+  const FACADE = `<svg viewBox="0 0 600 420" style="width:min(70vw,900px)" class="draw" fill="none" stroke="#c9b99a" stroke-width="2">
+    <path d="M60 400 L540 400"/><path d="M80 400 L80 130 L520 130 L520 400"/><path d="M60 130 L300 50 L540 130"/>
+    <path d="M200 60 L300 18 L400 60" stroke="#8fb3d9"/><path d="M230 60 L230 50 M270 46 L270 34 M330 34 L330 46 M370 50 L370 60" stroke="#8fb3d9"/>
+    <rect x="270" y="300" width="60" height="100"/><path d="M250 300 L350 300 M100 220 L500 220"/>
+    ${[110, 150, 190, 230, 370, 410, 450].map((x) => `<line x1="${x}" y1="140" x2="${x}" y2="400" stroke-width="1" opacity=".5"/>`).join('')}
+    ${[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `<rect class="win" data-w="${i}" x="${98 + i * 46}" y="150" width="26" height="48" stroke="#c9b99a" stroke-width="1.5"/>`).join('')}
+    ${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `<rect class="win" x="${100 + i * 52 + (i > 3 ? 40 : 0)}" y="240" width="22" height="44" stroke="#c9b99a" stroke-width="1.5"/>`).join('')}
+    <text x="300" y="118" fill="#c9b99a" stroke="none" text-anchor="middle" font-family="Georgia,serif" font-size="15" letter-spacing="6">VALMONT &amp; FILS · 1875</text>
+  </svg>`;
+  const NOTAIRE = `<svg viewBox="0 0 200 300" style="height:52vh;opacity:.95" stroke="#6c7896" stroke-width="1.6"><path d="M100 30 C70 30 62 52 64 70 L136 70 C138 52 130 30 100 30Z" fill="#0d0f14"/><ellipse cx="100" cy="72" rx="62" ry="10" fill="#0d0f14"/><circle cx="100" cy="98" r="26" fill="#0d0f14"/><path d="M40 300 L52 160 C56 132 76 122 100 122 C124 122 144 132 148 160 L160 300Z" fill="#0d0f14"/><path d="M100 124 L86 190 L100 300 L114 190Z" fill="#1c212c"/><path d="M60 175 L100 205 L140 175" stroke="#1c212c" stroke-width="4" fill="none"/></svg>`;
+  const VAN = `<svg viewBox="0 0 220 110" style="width:min(30vw,380px)"><rect x="4" y="18" width="150" height="70" rx="6" fill="#3a3f4a" stroke="#14110f" stroke-width="3"/><path d="M154 36 L196 36 L214 62 L214 88 L154 88Z" fill="#4a505c" stroke="#14110f" stroke-width="3"/><rect x="162" y="42" width="30" height="20" fill="#9bb6cf"/><circle cx="44" cy="92" r="14" fill="#14110f"/><circle cx="178" cy="92" r="14" fill="#14110f"/><text x="78" y="60" text-anchor="middle" font-family="Archivo,sans-serif" font-weight="700" font-size="16" fill="#e8b64a" letter-spacing="2">BLINDÉ</text></svg>`;
+
+  const SCENES = {
+    async city(st, ctx) { ctx.heavy.v = false; st.innerHTML = `<div style="text-align:center"><div class="mono in" style="font-size:clamp(.8rem,1.6vw,1.2rem);opacity:.7">Port-Sainte-Claire</div><div class="big in" id="viType" style="font-size:clamp(3rem,9vw,8rem);margin-top:1vh;animation-delay:.3s"></div></div>`;
+      const target = 'VENDREDI · 21:30', el = st.querySelector('#viType');
+      for (const ch of target) { if (ctx.dead()) return; el.textContent += ch; if (ch !== ' ') sfx('type'); await sleep(85); } },
+    async rain(st, ctx) { ctx.heavy.v = true; sfx('thunder'); ctx.flash(); st.innerHTML = `<div class="mono in" style="font-size:clamp(1rem,2.4vw,1.8rem);text-align:center">Place de la Bourse<br><span style="opacity:.6;font-size:.7em">48°12′ N · pluie forte</span></div>`; },
+    async facade(st, ctx) { ctx.heavy.v = false; sfx('whoosh'); st.innerHTML = `<div class="in" style="text-align:center">${FACADE}<div class="mono" style="margin-top:2vh;opacity:.75">3 étages · 1 verrière · 1 chambre forte</div></div>`;
+      await sleep(1800); st.querySelectorAll('.win[data-w]').forEach((w, i) => setTimeout(() => { w.classList.add('lit'); sfx('tick'); }, i * 160)); },
+    async vault(st, ctx) { sfx('riser');
+      const P = window.ValmontPlans; let plan = '';
+      try { plan = P ? P.svg('sous-sol', { cams: false, guards: false, lasers: false, labels: true }) : ''; } catch (e) { plan = ''; }
+      // S1 (chambre forte) : centre à 620,310 sur un plan de 800×500
+      st.innerHTML = `<div style="position:relative;width:min(80vw,1100px);aspect-ratio:8/5"><div class="zoom" style="position:absolute;inset:0;transform-origin:77.5% 62%;filter:saturate(.5) brightness(.55) contrast(1.1)">${plan}</div><div class="pulse" style="left:77.5%;top:62%;width:20%;aspect-ratio:1"></div><div class="pulse" style="left:77.5%;top:62%;width:20%;aspect-ratio:1;animation-delay:.7s"></div></div><div class="mono red" style="position:absolute;top:12vh;left:0;right:0;text-align:center;font-size:clamp(1rem,2.2vw,1.6rem)">Niveau −1 · Chambre forte</div>`;
+      await sleep(5200); if (!ctx.dead()) sfx('boom'); },
+    async gala(st, ctx) { sfx('whoosh');
+      const sp = Array.from({ length: 40 }, () => `<i class="spark" style="left:${Math.random() * 100}%;bottom:${Math.random() * 20 - 10}%;animation-duration:${4 + Math.random() * 5}s;animation-delay:${-Math.random() * 6}s"></i>`).join('');
+      st.innerHTML = `${sp}<div style="display:flex;gap:6vw;text-align:center;flex-wrap:wrap;justify-content:center">${[['150', 'ans'], ['60', 'invités'], ['1', 'quatuor']].map(([n, l], i) => `<div class="in" style="animation-delay:${0.3 + i * 0.9}s"><div class="big gold" data-n="${n}" style="font-size:clamp(4rem,11vw,10rem)">0</div><div class="mono" style="opacity:.75">${l}</div></div>`).join('')}</div>`;
+      st.querySelectorAll('[data-n]').forEach((el, i) => { const to = +el.dataset.n; setTimeout(() => { const t0 = performance.now(); sfx('tick'); (function f(t) { const k = Math.min(1, (t - t0) / 900); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))); if (k < 1 && !ctx.dead()) requestAnimationFrame(f); })(t0); }, 300 + i * 900); }); },
+    async clock(st, ctx) { sfx('boom');
+      st.innerHTML = `<div style="text-align:center;width:100%"><div class="big red flick" style="font-size:clamp(6rem,20vw,18rem)">06:00</div><div style="height:16vh;position:relative;margin-top:2vh"><div class="van" style="position:absolute;left:30%;bottom:0">${VAN}</div></div><div class="mono" style="opacity:.8">Destination : Suisse</div></div>`;
+      for (let i = 0; i < 8 && !ctx.dead(); i++) { sfx('tick'); await sleep(700); } },
+    async notaire(st, ctx) { ctx.heavy.v = true; sfx('whoosh');
+      st.innerHTML = `<div style="display:flex;align-items:flex-end;gap:4vw;justify-content:center;width:100%"><div class="in">${NOTAIRE}</div><div class="env" style="position:relative;width:min(36vw,460px);aspect-ratio:1.6;background:#d9c7a3;border-radius:4px;box-shadow:0 20px 50px rgba(0,0,0,.7)"><div style="position:absolute;inset:0;background:linear-gradient(155deg,transparent 49.5%,rgba(0,0,0,.18) 50%,transparent 51%),linear-gradient(25deg,transparent 49.5%,rgba(0,0,0,.18) 50%,transparent 51%)"></div><div class="stamp big red" style="position:absolute;left:12%;top:34%;border:4px solid #c42b2b;color:#c42b2b;padding:.4vh 1.2vw;font-size:clamp(1.2rem,3vw,2.6rem)">CONFIDENTIEL</div></div></div>`;
+      await sleep(2200); if (!ctx.dead()) sfx('boom'); },
+    async quote(st, ctx) { ctx.heavy.v = false;
+      st.innerHTML = `<div style="position:relative;text-align:center;width:100%"><div class="big" style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);font-size:clamp(10rem,34vw,30rem);color:rgba(232,182,74,.08)">117</div><div id="viQ" style="position:relative;font:italic clamp(1.6rem,4vw,3.6rem)/1.3 Georgia,serif;max-width:80vw;margin:auto;min-height:2.6em"></div></div>`;
+      const q = '« Casier 117. Une clé USB.\nJe la veux. »', el = st.querySelector('#viQ');
+      for (const ch of q) { if (ctx.dead()) return; el.innerHTML += ch === '\n' ? '<br>' : esc(ch); if (ch.trim()) sfx('type'); await sleep(70); } },
+    async stakes(st, ctx) {
+      st.innerHTML = `<div style="display:grid;gap:2vh;text-align:center">${['Le matériel', 'Les plans', 'Jusqu\'à l\'aube'].map((w, i) => `<div class="big" data-i="${i}" style="font-size:clamp(3rem,8vw,7rem);opacity:0;${i === 2 ? 'color:#e8b64a' : ''}">${w}</div>`).join('')}</div>`;
+      for (const el of st.querySelectorAll('[data-i]')) { await sleep(1300); if (ctx.dead()) return; el.style.opacity = 1; el.classList.add('slam'); sfx('boom'); ctx.shake(); } },
+    async title(st, ctx) { ctx.heavy.v = true; sfx('riser'); await sleep(1600); if (ctx.dead()) return; sfx('stinger'); sfx('thunder'); ctx.flash(); ctx.shake();
+      st.innerHTML = `<div style="text-align:center;position:relative;width:100%"><div class="streak"></div><div class="mono gold slam" style="font-size:clamp(.8rem,1.6vw,1.3rem);letter-spacing:.8em">Une nuit · une banque · aucun retour</div><div class="big glitch slam" data-t="OPÉRATION VALMONT" style="font-size:clamp(3.4rem,10.5vw,11rem);margin-top:1vh">OPÉRATION VALMONT</div></div>`; },
+  };
+
+  /* ---------- lecteur ---------- */
+  let root = null, alive = 0, rainCtl = null, curAudio = null;
+  function close() {
+    alive++;
+    if (curAudio) { try { curAudio.pause(); } catch (e) {} curAudio = null; }
+    if (rainCtl) { rainCtl.stop(); rainCtl = null; }
+    try { S() && S().ambience(prevAmb || ''); } catch (e) {}
+    prevAmb = null;
+    document.querySelectorAll('.vi,.vp').forEach((e) => e.remove());
+    document.removeEventListener('keydown', onKey);
+    root = null;
+  }
+  let prevAmb = null, onKey = null;
+  async function play(opts) {
+    opts = opts || {}; css(); close();
+    const id = ++alive, dead = () => id !== alive;
+    try { if (S()) { prevAmb = S().pending ? S().pending() : ''; S().ambience('pluie'); } } catch (e) {}
+    root = document.createElement('div'); root.className = 'vi bars';
+    root.innerHTML = `<canvas></canvas><div class="flash"></div><div class="stage"></div><div class="sub"></div><button class="skip" type="button">Passer ⏭</button>`;
+    document.body.appendChild(root);
+    const heavy = { v: false };
+    rainCtl = rain(root.querySelector('canvas'), heavy);
+    const st = root.querySelector('.stage'), sub = root.querySelector('.sub');
+    const ctx = { dead, heavy, flash() { const f = root && root.querySelector('.flash'); if (f) { f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); } }, shake() { if (st) { st.classList.remove('shake'); void st.offsetWidth; st.classList.add('shake'); } } };
+    const finish = () => { if (dead()) return; close(); if (opts.onEnd) opts.onEnd(); };
+    root.querySelector('.skip').onclick = finish;
+    onKey = (e) => { if (e.key === 'Escape') finish(); };
+    document.addEventListener('keydown', onKey);
+    const voices = LINES.map((_, i) => voice(i)); // on prépare toutes les voix en avance
+    await sleep(600);
+    for (let i = 0; i < LINES.length; i++) {
+      if (dead()) return;
+      const L = LINES[i];
+      st.innerHTML = '';
+      sub.classList.remove('on'); await sleep(250); if (dead()) return;
+      sub.textContent = L.t; sub.classList.add('on');
+      const a = await voices[i];
+      let need = L.d * 1000;
+      if (a) { curAudio = a; try { a.currentTime = 0; await a.play(); } catch (e) {} if (isFinite(a.duration) && a.duration) need = Math.max(need, a.duration * 1000 + 700); }
+      SCENES[L.id](st, ctx);
+      const t0 = Date.now();
+      while (Date.now() - t0 < need) { if (dead()) return; await sleep(100); }
+      if (curAudio) { try { curAudio.pause(); } catch (e) {} curAudio = null; }
+    }
+    await sleep(1200);
+    finish();
+  }
+
+  /* ---------- l'affiche ---------- */
+  function poster(opts) {
+    opts = opts || {}; css(); close();
+    const names = (opts.names || []).filter(Boolean).slice(0, 4);
+    const el = document.createElement('div'); el.className = 'vp';
+    const fallback = `radial-gradient(ellipse at 50% 35%,rgba(232,182,74,.35),transparent 45%),linear-gradient(180deg,#0b1020 0%,#1a1420 50%,#0a0a0d 100%)`;
+    el.innerHTML = `<button class="close" type="button">Fermer ✕</button><div class="frame"><div class="art" style="background-image:${fallback}"></div>
+      <div class="facade-fb" style="position:absolute;left:10%;right:10%;top:22%;opacity:.55">${FACADE.replace('class="draw"', '')}</div>
+      <div class="shade"></div><div class="sweep"></div>
+      <div class="cast">${esc(names.join('   ·   ') || 'Une équipe · Une nuit')}</div>
+      <div class="tag">« Ils avaient jusqu'à l'aube. Ils n'avaient pas droit à l'erreur. »</div>
+      <div class="ttl"><small>Le casse du siècle</small><b>OPÉRATION<br>VALMONT</b></div>
+      <div class="date">CE SOIR · 21H30</div>
+      <div class="bill">Une production <b>Soirée Banque</b> · un jeu de rôle mené par <b>le Maître du Jeu</b> · avec ${names.length ? names.map((n) => '<b>' + esc(n) + '</b>').join(' et ') : 'vous'} · Hélène Valmont · Paul Ferrand · le Notaire · musique originale <b>le Quatuor de la Bourse</b> · décors <b>Banque Valmont &amp; Fils, 1875</b> · d'après une nuit pluvieuse à Port-Sainte-Claire</div>
+      <div class="rate">−16 · CASSE</div></div>`;
+    document.body.appendChild(el);
+    // l'image de l'affiche si elle existe
+    const art = el.querySelector('.art'), fb = el.querySelector('.facade-fb');
+    (async () => { if (location.protocol === 'file:') return; for (const e of ['jpg', 'webp', 'png']) { const ok = await new Promise((r) => { const im = new Image(); im.onload = () => r(true); im.onerror = () => r(false); im.src = `scenes/affiche.${e}`; }); if (ok) { art.style.backgroundImage = `url(scenes/affiche.${e})`; fb.remove(); return; } } })();
+    sfx('boom'); setTimeout(() => sfx('stinger'), 300);
+    const shut = () => { el.remove(); document.removeEventListener('keydown', k); if (opts.onClose) opts.onClose(); };
+    const k = (e) => { if (e.key === 'Escape') shut(); };
+    el.querySelector('.close').onclick = shut; document.addEventListener('keydown', k);
+  }
+
+  window.ValmontIntro = { play, poster, close, LINES };
+})();
+
+</script>
+<script>
+(function () {
+  const L = ValmontIntro.LINES, pad = (n) => String(n).padStart(2, '0'), key = (i) => 'voix-' + pad(i + 1);
+  const msg = (t) => { document.getElementById('msg').textContent = t || ''; };
+  /* ---- stockage ---- */
+  function db() { return new Promise((res, rej) => { const r = indexedDB.open('valmont-voix', 1); r.onupgradeneeded = () => r.result.createObjectStore('voix'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+  async function put(k, v) { const d = await db(); return new Promise((res) => { const tx = d.transaction('voix', 'readwrite'); v ? tx.objectStore('voix').put(v, k) : tx.objectStore('voix').delete(k); tx.oncomplete = res; tx.onerror = res; }); }
+  async function get(k) { const d = await db(); return new Promise((res) => { const g = d.transaction('voix').objectStore('voix').get(k); g.onsuccess = () => res(g.result || null); g.onerror = () => res(null); }); }
+  const ext = (b) => (b.type.includes('mp4') ? 'm4a' : b.type.includes('ogg') ? 'ogg' : b.type.includes('wav') ? 'wav' : 'webm');
+  /* ---- affichage ---- */
+  const have = {};
+  async function render() {
+    for (let i = 0; i < L.length; i++) have[i] = !!(await get(key(i)));
+    document.getElementById('list').innerHTML = L.map((x, i) => `<div class="line ${have[i] ? 'done' : ''}" data-i="${i}">
+      <div class="n"><span>VOIX ${pad(i + 1)} · environ ${x.d} s</span>${have[i] ? '<span class="ok">● enregistrée</span>' : '<span>pas encore</span>'}</div>
+      <q>${x.t.replace(/[<&]/g, '')}</q>
+      <div class="row"><button class="rec" data-rec="${i}" type="button">● Enregistrer</button><button data-play="${i}" type="button" ${have[i] ? '' : 'disabled'}>▶ Écouter</button><button data-dl="${i}" type="button" ${have[i] ? '' : 'disabled'}>⬇ Fichier</button><button data-del="${i}" type="button" ${have[i] ? '' : 'disabled'}>Effacer</button><div class="meter"><i id="m${i}"></i></div></div>
+    </div>`).join('');
+  }
+  /* ---- enregistrement ---- */
+  let rec = null, stream = null, chunks = [], recI = -1, raf = 0;
+  async function start(i) {
+    msg('');
+    try { stream = stream || await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true } }); }
+    catch (e) { msg('Le micro est bloqué. Autorise-le dans le navigateur (icône à gauche de l\'adresse), puis réessaie.'); return; }
+    const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg'].find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+    rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined); chunks = []; recI = i;
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = async () => { cancelAnimationFrame(raf); const b = new Blob(chunks, { type: rec.mimeType || 'audio/webm' }); await put(key(i), b); recI = -1; await render(); msg('Voix ' + pad(i + 1) + ' enregistrée.'); };
+    rec.start();
+    const btn = document.querySelector(`[data-rec="${i}"]`); btn.classList.add('on'); btn.textContent = '■ Arrêter';
+    // niveau du micro
+    try { const ac = new (window.AudioContext || window.webkitAudioContext)(), an = ac.createAnalyser(); ac.createMediaStreamSource(stream).connect(an); const d = new Uint8Array(an.fftSize);
+      (function f() { an.getByteTimeDomainData(d); let m = 0; for (const v of d) m = Math.max(m, Math.abs(v - 128)); const el = document.getElementById('m' + i); if (el) el.style.width = Math.min(100, m / 1.2) + '%'; if (recI === i) raf = requestAnimationFrame(f); })(); } catch (e) {}
+  }
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
+    const d = b.dataset;
+    if (d.rec != null) { const i = +d.rec; if (recI === i && rec) return rec.stop(); if (recI >= 0) return; return start(i); }
+    if (d.play != null) { const bl = await get(key(+d.play)); if (bl) new Audio(URL.createObjectURL(bl)).play(); return; }
+    if (d.dl != null) { const bl = await get(key(+d.dl)); if (!bl) return; const a = document.createElement('a'); a.href = URL.createObjectURL(bl); a.download = key(+d.dl) + '.' + ext(bl); a.click(); return; }
+    if (d.del != null) { await put(key(+d.del), null); return render(); }
+    if (b.id === 'dlAll') { for (let i = 0; i < L.length; i++) { const bl = await get(key(i)); if (!bl) continue; const a = document.createElement('a'); a.href = URL.createObjectURL(bl); a.download = key(i) + '.' + ext(bl); a.click(); await new Promise((r) => setTimeout(r, 400)); } return; }
+    if (b.id === 'playAll') { try { ValmontSound.unlock(); } catch (er) {} ValmontIntro.play({ onEnd: () => ValmontIntro.poster({}) }); }
+  });
+  render();
+})();
+</script>
+</body>
+</html>

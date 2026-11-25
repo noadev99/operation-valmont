@@ -321,6 +321,11 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <button class="b sm" data-ambauto="1" type="button">Remettre l'automatique</button>
   </details>
 
+  <div class="card"><h3><span>Intro du film</span><span id="cIntroNow"></span></h3>
+    <div class="btns"><button class="b go" data-intro="video" type="button">▶ Lancer l'intro sur la télé</button><button class="b" data-intro="poster" type="button">Montrer l'affiche</button><button class="b red" data-intro="off" type="button">Fermer</button></div>
+    <p class="hint">Une minute de vidéo qui raconte le contexte (avec ta voix si tu l'as enregistrée sur <a href="voix.html" target="_blank" rel="noopener">la page des voix</a>), puis l'affiche du film. Active le son de la télé avant. Sur la télé, « Passer » ou Échap saute l'intro.</p>
+  </div>
+
   <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
     <div id="cScenes"></div>
     <button class="b red" id="sceneOff">Fermer la scène</button>
@@ -520,6 +525,278 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     return `<img data-i="0" src="${cand[0]}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="window.__${id}(this)">`;
   }
   window.ValmontScenes = { svg, html, situations: Object.keys(TITLE).map((k) => ({ id: k, name: TITLE[k] })), states: [['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']] };
+})();
+
+</script>
+<script>
+/* Intro animée d'Opération Valmont (motion design + effets sonores + voix off), puis l'affiche du film.
+   ValmontIntro.play({ names, onEnd })   joue l'intro en plein écran ; « Passer » ou Échap pour sauter
+   ValmontIntro.poster({ names, onClose }) ouvre l'affiche
+   ValmontIntro.close()                  ferme tout
+   ValmontIntro.LINES                     le texte de la voix off (voix-01 … voix-10)
+   Voix off : fichiers intro/voix-01.mp3 (ou .m4a, .webm, .ogg, .wav), ou enregistrées sur voix.html (même navigateur).
+   Affiche : image scenes/affiche.jpg (ou .webp, .png) ; sans image, une affiche dessinée la remplace. */
+(function () {
+  const LINES = [
+    { id: 'city', t: 'Port-Sainte-Claire. Vendredi soir. 21h30.', d: 5.5 },
+    { id: 'rain', t: 'Il pleut sur la place de la Bourse.', d: 4.5 },
+    { id: 'facade', t: 'En face : la Banque Valmont & Fils. Trois étages de pierre, une verrière sur le toit…', d: 7 },
+    { id: 'vault', t: '… et sous vos pieds, la chambre forte la plus réputée de la région.', d: 6.5 },
+    { id: 'gala', t: 'Ce soir, Hélène Valmont fête les 150 ans de la banque. Soixante invités. Du champagne. Un quatuor à cordes.', d: 8 },
+    { id: 'clock', t: 'Demain, à 6h00, un fourgon blindé viendra tout emporter en Suisse.', d: 6.5 },
+    { id: 'notaire', t: 'À l\'arrière d\'une camionnette, un homme qu\'on appelle le Notaire pose une enveloppe.', d: 6.5 },
+    { id: 'quote', t: '« Casier 117. Une clé USB. Je la veux. Tout le reste est pour vous. »', d: 7 },
+    { id: 'stakes', t: 'Vous avez le matériel. Vous avez les plans. Vous avez jusqu\'à l\'aube.', d: 6.5 },
+    { id: 'title', t: 'Opération Valmont.', d: 5.5 },
+  ];
+  const pad = (n) => String(n).padStart(2, '0');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const S = () => window.ValmontSound;
+  const sfx = (id) => { try { S() && S().play(id); } catch (e) {} };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /* ---------- styles (injectés une fois) ---------- */
+  function css() {
+    if (document.getElementById('vi-css')) return;
+    const st = document.createElement('style'); st.id = 'vi-css';
+    st.textContent = `
+.vi{position:fixed;inset:0;z-index:100;background:#030407;color:#f3ead6;overflow:hidden;font-family:"Archivo",system-ui,sans-serif}
+.vi canvas{position:absolute;inset:0;width:100%;height:100%}
+.vi .stage{position:absolute;inset:0;display:grid;place-items:center;padding:11vh 0 22vh}
+.vi .sub{position:absolute;left:50%;bottom:6vh;transform:translateX(-50%);width:min(1100px,90vw);text-align:center;font:500 clamp(1rem,2.2vw,1.7rem)/1.35 Georgia,serif;font-style:italic;color:#f3ead6;text-shadow:0 2px 12px #000;opacity:0;transition:opacity .5s}
+.vi .sub.on{opacity:1}
+.vi .skip{position:absolute;top:18px;right:18px;z-index:5;background:rgba(0,0,0,.5);color:#f3ead6;border:1px solid rgba(243,234,214,.4);font:600 .9rem "Archivo",sans-serif;padding:8px 14px;cursor:pointer;letter-spacing:.08em}
+.vi .bars:before,.vi .bars:after{content:"";position:absolute;left:0;right:0;height:9vh;background:#000;z-index:4}
+.vi .bars:before{top:0}.vi .bars:after{bottom:0}
+.vi .flash{position:absolute;inset:0;background:#dfe8ff;opacity:0;pointer-events:none;z-index:3}
+.vi .flash.go{animation:viFlash .9s ease-out}
+@keyframes viFlash{0%{opacity:0}8%{opacity:.85}14%{opacity:.1}22%{opacity:.6}100%{opacity:0}}
+.vi .in{animation:viIn 1.2s cubic-bezier(.2,.7,.2,1) both}
+@keyframes viIn{from{opacity:0;transform:translateY(24px) scale(.98);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+.vi .mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;letter-spacing:.2em;text-transform:uppercase}
+.vi .big{font-family:"Saira Stencil One",Impact,"Arial Narrow",sans-serif;letter-spacing:.04em;line-height:.95}
+.vi .gold{color:#e8b64a}.vi .red{color:#ff4d4d}
+.vi .draw path,.vi .draw line,.vi .draw rect,.vi .draw polyline{stroke-dasharray:1600;stroke-dashoffset:1600;animation:viDraw 3.2s ease-in-out forwards}
+@keyframes viDraw{to{stroke-dashoffset:0}}
+.vi .win{fill:#1a1d26;transition:fill .6s}.vi .win.lit{fill:#f5c45a;filter:drop-shadow(0 0 6px #f5c45a)}
+.vi .zoom{animation:viZoom 7s ease-in forwards}
+@keyframes viZoom{from{transform:scale(1)}to{transform:scale(2.3)}}
+.vi .pulse{position:absolute;border:3px solid #ff4d4d;border-radius:50%;animation:viPulse 1.4s ease-out infinite}
+@keyframes viPulse{from{transform:translate(-50%,-50%) scale(.3);opacity:1}to{transform:translate(-50%,-50%) scale(1.6);opacity:0}}
+.vi .spark{position:absolute;width:4px;height:4px;border-radius:50%;background:#f5c45a;box-shadow:0 0 8px #f5c45a;animation:viRise linear infinite}
+@keyframes viRise{from{transform:translateY(10vh);opacity:0}20%{opacity:1}to{transform:translateY(-90vh);opacity:0}}
+.vi .flick{animation:viFlick 2.4s steps(1) infinite}
+@keyframes viFlick{0%,100%{opacity:1}47%{opacity:.25}49%{opacity:1}51%{opacity:.4}53%{opacity:1}}
+.vi .van{animation:viVan 6s linear forwards}
+@keyframes viVan{from{transform:translateX(-30vw)}to{transform:translateX(40vw)}}
+.vi .env{animation:viEnv 1.6s cubic-bezier(.2,.8,.2,1) .6s both}
+@keyframes viEnv{from{transform:translate(40vw,10vh) rotate(25deg);opacity:0}to{transform:rotate(-4deg);opacity:1}}
+.vi .stamp{animation:viStamp .5s cubic-bezier(.3,1.6,.5,1) 2.2s both}
+@keyframes viStamp{from{transform:scale(3) rotate(-12deg);opacity:0}to{transform:scale(1) rotate(-12deg);opacity:1}}
+.vi .slam{animation:viSlam .55s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes viSlam{from{transform:scale(2.6);opacity:0;filter:blur(8px)}to{transform:none;opacity:1;filter:none}}
+.vi .shake{animation:viShake .5s linear}
+@keyframes viShake{0%,100%{transform:none}20%{transform:translate(-8px,4px)}40%{transform:translate(7px,-5px)}60%{transform:translate(-5px,-3px)}80%{transform:translate(4px,5px)}}
+.vi .streak{position:absolute;top:50%;left:-40%;width:40%;height:3px;background:linear-gradient(90deg,transparent,#fff,transparent);animation:viStreak 1.4s ease-in-out .3s both}
+@keyframes viStreak{to{left:110%}}
+.vi .glitch{position:relative}
+.vi .glitch:before,.vi .glitch:after{content:attr(data-t);position:absolute;inset:0;opacity:.7}
+.vi .glitch:before{color:#ff2a4a;transform:translate(-3px,0);animation:viG 2.2s steps(2) infinite}
+.vi .glitch:after{color:#2ad0ff;transform:translate(3px,0);animation:viG 1.7s steps(2) infinite reverse}
+@keyframes viG{0%,90%,100%{clip-path:inset(0 0 100% 0)}92%{clip-path:inset(20% 0 55% 0)}95%{clip-path:inset(60% 0 15% 0)}}
+/* affiche */
+.vp{position:fixed;inset:0;z-index:100;background:radial-gradient(ellipse at center,#14110f 0%,#000 75%);display:grid;place-items:center;padding:2vh}
+.vp .frame{position:relative;height:min(96vh,150vw);aspect-ratio:2/3;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08);animation:vpIn 1.4s cubic-bezier(.2,.8,.2,1) both;background:#0b0d14}
+@keyframes vpIn{from{opacity:0;transform:scale(1.06);filter:brightness(3) blur(10px)}to{opacity:1;transform:none;filter:none}}
+.vp .art{position:absolute;inset:0;background-size:cover;background-position:center;animation:vpKen 30s ease-out forwards}
+@keyframes vpKen{from{transform:scale(1.12)}to{transform:scale(1)}}
+.vp .facade-fb svg{width:100%!important;height:auto}
+.vp .shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.65) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 52%,rgba(0,0,0,.85) 78%,#000 100%)}
+.vp .sweep{position:absolute;top:0;bottom:0;width:30%;left:-40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.18),transparent);animation:vpSweep 2.2s ease-in-out 1.2s both}
+@keyframes vpSweep{to{left:120%}}
+.vp .cast{position:absolute;top:4.5%;left:0;right:0;text-align:center;font:600 2.1vh "Archivo",sans-serif;letter-spacing:.5em;color:#f3ead6;text-transform:uppercase}
+.vp .tag{position:absolute;top:10%;left:8%;right:8%;text-align:center;font:italic 2vh Georgia,serif;color:#e9dcc0;letter-spacing:.05em}
+.vp .ttl{position:absolute;left:4%;right:4%;bottom:19%;text-align:center}
+.vp .ttl small{display:block;font:600 1.6vh "Archivo",sans-serif;letter-spacing:.7em;color:#e8b64a;margin-bottom:1vh}
+.vp .ttl b{display:block;font-family:"Saira Stencil One",Impact,sans-serif;font-weight:400;font-size:8.4vh;line-height:.9;color:#f6efe0;text-shadow:0 4px 30px rgba(0,0,0,.8);letter-spacing:.02em}
+.vp .date{position:absolute;left:0;right:0;bottom:13.5%;text-align:center;font:700 2.2vh "Archivo",sans-serif;letter-spacing:.45em;color:#e8b64a}
+.vp .bill{position:absolute;left:7%;right:7%;bottom:3.5%;text-align:center;font:500 1.05vh/1.25 "Archivo Narrow","Arial Narrow",sans-serif;color:rgba(243,234,214,.72);letter-spacing:.12em;text-transform:uppercase;transform:scaleY(1.35);transform-origin:bottom}
+.vp .bill b{color:#f3ead6;font-weight:700}
+.vp .rate{position:absolute;bottom:1.2%;left:7%;font:700 1.1vh "Archivo",sans-serif;border:1px solid rgba(243,234,214,.6);padding:.2vh .6vh;color:rgba(243,234,214,.8);letter-spacing:.1em}
+.vp .close{position:absolute;top:18px;right:18px;background:rgba(0,0,0,.5);color:#f3ead6;border:1px solid rgba(243,234,214,.4);font:600 .9rem "Archivo",sans-serif;padding:8px 14px;cursor:pointer;letter-spacing:.08em;z-index:2}
+@media (prefers-reduced-motion:reduce){.vi *,.vp *{animation-duration:.01s!important;animation-iteration-count:1!important}}
+`;
+    document.head.appendChild(st);
+  }
+
+  /* ---------- voix off ---------- */
+  const EXT = ['mp3', 'm4a', 'webm', 'ogg', 'wav'];
+  function idbGet(key) {
+    return new Promise((res) => {
+      try {
+        const rq = indexedDB.open('valmont-voix', 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore('voix');
+        rq.onerror = () => res(null);
+        rq.onsuccess = () => { try { const tx = rq.result.transaction('voix', 'readonly'), g = tx.objectStore('voix').get(key); g.onsuccess = () => res(g.result || null); g.onerror = () => res(null); } catch (e) { res(null); } };
+      } catch (e) { res(null); }
+    });
+  }
+  function tryAudio(src) {
+    return new Promise((res) => {
+      const a = new Audio(); let done = false;
+      const fin = (ok) => { if (done) return; done = true; res(ok ? a : null); };
+      a.preload = 'auto'; a.oncanplaythrough = () => fin(true); a.onloadedmetadata = () => fin(true); a.onerror = () => fin(false);
+      setTimeout(() => fin(false), 2500); a.src = src;
+    });
+  }
+  async function voice(i) {
+    const key = 'voix-' + pad(i + 1);
+    const blob = await idbGet(key);
+    if (blob) { const a = await tryAudio(URL.createObjectURL(blob)); if (a) return a; }
+    if (location.protocol === 'file:') return null;
+    for (const e of EXT) { const a = await tryAudio(`intro/${key}.${e}`); if (a) return a; }
+    return null;
+  }
+
+  /* ---------- pluie ---------- */
+  function rain(cv, heavy) {
+    const c = cv.getContext('2d'); let w, h, drops = [], run = true;
+    const size = () => { w = cv.width = cv.clientWidth * devicePixelRatio; h = cv.height = cv.clientHeight * devicePixelRatio; };
+    size(); window.addEventListener('resize', size);
+    const n = () => (heavy.v ? 520 : 220);
+    const mk = () => ({ x: Math.random() * w * 1.2, y: Math.random() * -h, l: 10 + Math.random() * 24, s: 14 + Math.random() * 16 });
+    for (let i = 0; i < 520; i++) drops.push(Object.assign(mk(), { y: Math.random() * h }));
+    (function frame() {
+      if (!run) return;
+      c.clearRect(0, 0, w, h); c.strokeStyle = 'rgba(170,190,230,.35)'; c.lineWidth = devicePixelRatio;
+      c.beginPath();
+      for (let i = 0; i < n(); i++) { const d = drops[i]; c.moveTo(d.x, d.y); c.lineTo(d.x - d.l * 0.25, d.y + d.l); d.y += d.s * devicePixelRatio; d.x -= d.s * 0.25; if (d.y > h) Object.assign(d, mk(), { y: -20 }); }
+      c.stroke(); requestAnimationFrame(frame);
+    })();
+    return { stop() { run = false; window.removeEventListener('resize', size); } };
+  }
+
+  /* ---------- les plans de l'intro ---------- */
+  const FACADE = `<svg viewBox="0 0 600 420" style="width:min(70vw,900px)" class="draw" fill="none" stroke="#c9b99a" stroke-width="2">
+    <path d="M60 400 L540 400"/><path d="M80 400 L80 130 L520 130 L520 400"/><path d="M60 130 L300 50 L540 130"/>
+    <path d="M200 60 L300 18 L400 60" stroke="#8fb3d9"/><path d="M230 60 L230 50 M270 46 L270 34 M330 34 L330 46 M370 50 L370 60" stroke="#8fb3d9"/>
+    <rect x="270" y="300" width="60" height="100"/><path d="M250 300 L350 300 M100 220 L500 220"/>
+    ${[110, 150, 190, 230, 370, 410, 450].map((x) => `<line x1="${x}" y1="140" x2="${x}" y2="400" stroke-width="1" opacity=".5"/>`).join('')}
+    ${[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `<rect class="win" data-w="${i}" x="${98 + i * 46}" y="150" width="26" height="48" stroke="#c9b99a" stroke-width="1.5"/>`).join('')}
+    ${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => `<rect class="win" x="${100 + i * 52 + (i > 3 ? 40 : 0)}" y="240" width="22" height="44" stroke="#c9b99a" stroke-width="1.5"/>`).join('')}
+    <text x="300" y="118" fill="#c9b99a" stroke="none" text-anchor="middle" font-family="Georgia,serif" font-size="15" letter-spacing="6">VALMONT &amp; FILS · 1875</text>
+  </svg>`;
+  const NOTAIRE = `<svg viewBox="0 0 200 300" style="height:52vh;opacity:.95" stroke="#6c7896" stroke-width="1.6"><path d="M100 30 C70 30 62 52 64 70 L136 70 C138 52 130 30 100 30Z" fill="#0d0f14"/><ellipse cx="100" cy="72" rx="62" ry="10" fill="#0d0f14"/><circle cx="100" cy="98" r="26" fill="#0d0f14"/><path d="M40 300 L52 160 C56 132 76 122 100 122 C124 122 144 132 148 160 L160 300Z" fill="#0d0f14"/><path d="M100 124 L86 190 L100 300 L114 190Z" fill="#1c212c"/><path d="M60 175 L100 205 L140 175" stroke="#1c212c" stroke-width="4" fill="none"/></svg>`;
+  const VAN = `<svg viewBox="0 0 220 110" style="width:min(30vw,380px)"><rect x="4" y="18" width="150" height="70" rx="6" fill="#3a3f4a" stroke="#14110f" stroke-width="3"/><path d="M154 36 L196 36 L214 62 L214 88 L154 88Z" fill="#4a505c" stroke="#14110f" stroke-width="3"/><rect x="162" y="42" width="30" height="20" fill="#9bb6cf"/><circle cx="44" cy="92" r="14" fill="#14110f"/><circle cx="178" cy="92" r="14" fill="#14110f"/><text x="78" y="60" text-anchor="middle" font-family="Archivo,sans-serif" font-weight="700" font-size="16" fill="#e8b64a" letter-spacing="2">BLINDÉ</text></svg>`;
+
+  const SCENES = {
+    async city(st, ctx) { ctx.heavy.v = false; st.innerHTML = `<div style="text-align:center"><div class="mono in" style="font-size:clamp(.8rem,1.6vw,1.2rem);opacity:.7">Port-Sainte-Claire</div><div class="big in" id="viType" style="font-size:clamp(3rem,9vw,8rem);margin-top:1vh;animation-delay:.3s"></div></div>`;
+      const target = 'VENDREDI · 21:30', el = st.querySelector('#viType');
+      for (const ch of target) { if (ctx.dead()) return; el.textContent += ch; if (ch !== ' ') sfx('type'); await sleep(85); } },
+    async rain(st, ctx) { ctx.heavy.v = true; sfx('thunder'); ctx.flash(); st.innerHTML = `<div class="mono in" style="font-size:clamp(1rem,2.4vw,1.8rem);text-align:center">Place de la Bourse<br><span style="opacity:.6;font-size:.7em">48°12′ N · pluie forte</span></div>`; },
+    async facade(st, ctx) { ctx.heavy.v = false; sfx('whoosh'); st.innerHTML = `<div class="in" style="text-align:center">${FACADE}<div class="mono" style="margin-top:2vh;opacity:.75">3 étages · 1 verrière · 1 chambre forte</div></div>`;
+      await sleep(1800); st.querySelectorAll('.win[data-w]').forEach((w, i) => setTimeout(() => { w.classList.add('lit'); sfx('tick'); }, i * 160)); },
+    async vault(st, ctx) { sfx('riser');
+      const P = window.ValmontPlans; let plan = '';
+      try { plan = P ? P.svg('sous-sol', { cams: false, guards: false, lasers: false, labels: true }) : ''; } catch (e) { plan = ''; }
+      // S1 (chambre forte) : centre à 620,310 sur un plan de 800×500
+      st.innerHTML = `<div style="position:relative;width:min(80vw,1100px);aspect-ratio:8/5"><div class="zoom" style="position:absolute;inset:0;transform-origin:77.5% 62%;filter:saturate(.5) brightness(.55) contrast(1.1)">${plan}</div><div class="pulse" style="left:77.5%;top:62%;width:20%;aspect-ratio:1"></div><div class="pulse" style="left:77.5%;top:62%;width:20%;aspect-ratio:1;animation-delay:.7s"></div></div><div class="mono red" style="position:absolute;top:12vh;left:0;right:0;text-align:center;font-size:clamp(1rem,2.2vw,1.6rem)">Niveau −1 · Chambre forte</div>`;
+      await sleep(5200); if (!ctx.dead()) sfx('boom'); },
+    async gala(st, ctx) { sfx('whoosh');
+      const sp = Array.from({ length: 40 }, () => `<i class="spark" style="left:${Math.random() * 100}%;bottom:${Math.random() * 20 - 10}%;animation-duration:${4 + Math.random() * 5}s;animation-delay:${-Math.random() * 6}s"></i>`).join('');
+      st.innerHTML = `${sp}<div style="display:flex;gap:6vw;text-align:center;flex-wrap:wrap;justify-content:center">${[['150', 'ans'], ['60', 'invités'], ['1', 'quatuor']].map(([n, l], i) => `<div class="in" style="animation-delay:${0.3 + i * 0.9}s"><div class="big gold" data-n="${n}" style="font-size:clamp(4rem,11vw,10rem)">0</div><div class="mono" style="opacity:.75">${l}</div></div>`).join('')}</div>`;
+      st.querySelectorAll('[data-n]').forEach((el, i) => { const to = +el.dataset.n; setTimeout(() => { const t0 = performance.now(); sfx('tick'); (function f(t) { const k = Math.min(1, (t - t0) / 900); el.textContent = Math.round(to * (1 - Math.pow(1 - k, 3))); if (k < 1 && !ctx.dead()) requestAnimationFrame(f); })(t0); }, 300 + i * 900); }); },
+    async clock(st, ctx) { sfx('boom');
+      st.innerHTML = `<div style="text-align:center;width:100%"><div class="big red flick" style="font-size:clamp(6rem,20vw,18rem)">06:00</div><div style="height:16vh;position:relative;margin-top:2vh"><div class="van" style="position:absolute;left:30%;bottom:0">${VAN}</div></div><div class="mono" style="opacity:.8">Destination : Suisse</div></div>`;
+      for (let i = 0; i < 8 && !ctx.dead(); i++) { sfx('tick'); await sleep(700); } },
+    async notaire(st, ctx) { ctx.heavy.v = true; sfx('whoosh');
+      st.innerHTML = `<div style="display:flex;align-items:flex-end;gap:4vw;justify-content:center;width:100%"><div class="in">${NOTAIRE}</div><div class="env" style="position:relative;width:min(36vw,460px);aspect-ratio:1.6;background:#d9c7a3;border-radius:4px;box-shadow:0 20px 50px rgba(0,0,0,.7)"><div style="position:absolute;inset:0;background:linear-gradient(155deg,transparent 49.5%,rgba(0,0,0,.18) 50%,transparent 51%),linear-gradient(25deg,transparent 49.5%,rgba(0,0,0,.18) 50%,transparent 51%)"></div><div class="stamp big red" style="position:absolute;left:12%;top:34%;border:4px solid #c42b2b;color:#c42b2b;padding:.4vh 1.2vw;font-size:clamp(1.2rem,3vw,2.6rem)">CONFIDENTIEL</div></div></div>`;
+      await sleep(2200); if (!ctx.dead()) sfx('boom'); },
+    async quote(st, ctx) { ctx.heavy.v = false;
+      st.innerHTML = `<div style="position:relative;text-align:center;width:100%"><div class="big" style="position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);font-size:clamp(10rem,34vw,30rem);color:rgba(232,182,74,.08)">117</div><div id="viQ" style="position:relative;font:italic clamp(1.6rem,4vw,3.6rem)/1.3 Georgia,serif;max-width:80vw;margin:auto;min-height:2.6em"></div></div>`;
+      const q = '« Casier 117. Une clé USB.\nJe la veux. »', el = st.querySelector('#viQ');
+      for (const ch of q) { if (ctx.dead()) return; el.innerHTML += ch === '\n' ? '<br>' : esc(ch); if (ch.trim()) sfx('type'); await sleep(70); } },
+    async stakes(st, ctx) {
+      st.innerHTML = `<div style="display:grid;gap:2vh;text-align:center">${['Le matériel', 'Les plans', 'Jusqu\'à l\'aube'].map((w, i) => `<div class="big" data-i="${i}" style="font-size:clamp(3rem,8vw,7rem);opacity:0;${i === 2 ? 'color:#e8b64a' : ''}">${w}</div>`).join('')}</div>`;
+      for (const el of st.querySelectorAll('[data-i]')) { await sleep(1300); if (ctx.dead()) return; el.style.opacity = 1; el.classList.add('slam'); sfx('boom'); ctx.shake(); } },
+    async title(st, ctx) { ctx.heavy.v = true; sfx('riser'); await sleep(1600); if (ctx.dead()) return; sfx('stinger'); sfx('thunder'); ctx.flash(); ctx.shake();
+      st.innerHTML = `<div style="text-align:center;position:relative;width:100%"><div class="streak"></div><div class="mono gold slam" style="font-size:clamp(.8rem,1.6vw,1.3rem);letter-spacing:.8em">Une nuit · une banque · aucun retour</div><div class="big glitch slam" data-t="OPÉRATION VALMONT" style="font-size:clamp(3.4rem,10.5vw,11rem);margin-top:1vh">OPÉRATION VALMONT</div></div>`; },
+  };
+
+  /* ---------- lecteur ---------- */
+  let root = null, alive = 0, rainCtl = null, curAudio = null;
+  function close() {
+    alive++;
+    if (curAudio) { try { curAudio.pause(); } catch (e) {} curAudio = null; }
+    if (rainCtl) { rainCtl.stop(); rainCtl = null; }
+    try { S() && S().ambience(prevAmb || ''); } catch (e) {}
+    prevAmb = null;
+    document.querySelectorAll('.vi,.vp').forEach((e) => e.remove());
+    document.removeEventListener('keydown', onKey);
+    root = null;
+  }
+  let prevAmb = null, onKey = null;
+  async function play(opts) {
+    opts = opts || {}; css(); close();
+    const id = ++alive, dead = () => id !== alive;
+    try { if (S()) { prevAmb = S().pending ? S().pending() : ''; S().ambience('pluie'); } } catch (e) {}
+    root = document.createElement('div'); root.className = 'vi bars';
+    root.innerHTML = `<canvas></canvas><div class="flash"></div><div class="stage"></div><div class="sub"></div><button class="skip" type="button">Passer ⏭</button>`;
+    document.body.appendChild(root);
+    const heavy = { v: false };
+    rainCtl = rain(root.querySelector('canvas'), heavy);
+    const st = root.querySelector('.stage'), sub = root.querySelector('.sub');
+    const ctx = { dead, heavy, flash() { const f = root && root.querySelector('.flash'); if (f) { f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); } }, shake() { if (st) { st.classList.remove('shake'); void st.offsetWidth; st.classList.add('shake'); } } };
+    const finish = () => { if (dead()) return; close(); if (opts.onEnd) opts.onEnd(); };
+    root.querySelector('.skip').onclick = finish;
+    onKey = (e) => { if (e.key === 'Escape') finish(); };
+    document.addEventListener('keydown', onKey);
+    const voices = LINES.map((_, i) => voice(i)); // on prépare toutes les voix en avance
+    await sleep(600);
+    for (let i = 0; i < LINES.length; i++) {
+      if (dead()) return;
+      const L = LINES[i];
+      st.innerHTML = '';
+      sub.classList.remove('on'); await sleep(250); if (dead()) return;
+      sub.textContent = L.t; sub.classList.add('on');
+      const a = await voices[i];
+      let need = L.d * 1000;
+      if (a) { curAudio = a; try { a.currentTime = 0; await a.play(); } catch (e) {} if (isFinite(a.duration) && a.duration) need = Math.max(need, a.duration * 1000 + 700); }
+      SCENES[L.id](st, ctx);
+      const t0 = Date.now();
+      while (Date.now() - t0 < need) { if (dead()) return; await sleep(100); }
+      if (curAudio) { try { curAudio.pause(); } catch (e) {} curAudio = null; }
+    }
+    await sleep(1200);
+    finish();
+  }
+
+  /* ---------- l'affiche ---------- */
+  function poster(opts) {
+    opts = opts || {}; css(); close();
+    const names = (opts.names || []).filter(Boolean).slice(0, 4);
+    const el = document.createElement('div'); el.className = 'vp';
+    const fallback = `radial-gradient(ellipse at 50% 35%,rgba(232,182,74,.35),transparent 45%),linear-gradient(180deg,#0b1020 0%,#1a1420 50%,#0a0a0d 100%)`;
+    el.innerHTML = `<button class="close" type="button">Fermer ✕</button><div class="frame"><div class="art" style="background-image:${fallback}"></div>
+      <div class="facade-fb" style="position:absolute;left:10%;right:10%;top:22%;opacity:.55">${FACADE.replace('class="draw"', '')}</div>
+      <div class="shade"></div><div class="sweep"></div>
+      <div class="cast">${esc(names.join('   ·   ') || 'Une équipe · Une nuit')}</div>
+      <div class="tag">« Ils avaient jusqu'à l'aube. Ils n'avaient pas droit à l'erreur. »</div>
+      <div class="ttl"><small>Le casse du siècle</small><b>OPÉRATION<br>VALMONT</b></div>
+      <div class="date">CE SOIR · 21H30</div>
+      <div class="bill">Une production <b>Soirée Banque</b> · un jeu de rôle mené par <b>le Maître du Jeu</b> · avec ${names.length ? names.map((n) => '<b>' + esc(n) + '</b>').join(' et ') : 'vous'} · Hélène Valmont · Paul Ferrand · le Notaire · musique originale <b>le Quatuor de la Bourse</b> · décors <b>Banque Valmont &amp; Fils, 1875</b> · d'après une nuit pluvieuse à Port-Sainte-Claire</div>
+      <div class="rate">−16 · CASSE</div></div>`;
+    document.body.appendChild(el);
+    // l'image de l'affiche si elle existe
+    const art = el.querySelector('.art'), fb = el.querySelector('.facade-fb');
+    (async () => { if (location.protocol === 'file:') return; for (const e of ['jpg', 'webp', 'png']) { const ok = await new Promise((r) => { const im = new Image(); im.onload = () => r(true); im.onerror = () => r(false); im.src = `scenes/affiche.${e}`; }); if (ok) { art.style.backgroundImage = `url(scenes/affiche.${e})`; fb.remove(); return; } } })();
+    sfx('boom'); setTimeout(() => sfx('stinger'), 300);
+    const shut = () => { el.remove(); document.removeEventListener('keydown', k); if (opts.onClose) opts.onClose(); };
+    const k = (e) => { if (e.key === 'Escape') shut(); };
+    el.querySelector('.close').onclick = shut; document.addEventListener('keydown', k);
+  }
+
+  window.ValmontIntro = { play, poster, close, LINES };
 })();
 
 </script>
@@ -1186,8 +1463,16 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     ping() { const t = T(); tone('sine', 880, t, 0.35, 0.22); tone('sine', 1320, t + 0.02, 0.3, 0.1); },
     dice() { const t = T(); let x = 0, gap = 0.13; for (let i = 0; i < 14; i++) { noise(t + x, 0.05, 0.22, 'bandpass', 1500 + Math.random() * 1500, 3); tone('triangle', 500 + Math.random() * 300, t + x, 0.04, 0.05); x += gap; gap = Math.max(0.05, gap * 0.9); }
       tone('sine', 120, t + 1.15, 0.2, 0.45, 70); },
+    /* --- pour l'intro --- */
+    whoosh() { const t = T(), s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noiseBuffer(); f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(4000, t + 0.45); f.frequency.exponentialRampToValueAtTime(800, t + 0.8); env(g, t, 0.85, 0.5, 0.25); s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + 0.9); },
+    boom() { const t = T(); tone('sine', 90, t, 1.6, 0.9, 28); tone('triangle', 55, t, 1.2, 0.5, 30); noise(t, 0.35, 0.6, 'lowpass', 400, 1); noise(t + 0.02, 1.4, 0.12, 'lowpass', 160, 1); },
+    riser() { const t = T(), o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(880, t + 2.6); f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(5000, t + 2.6); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 2.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8); o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + 2.9); noise(t, 2.7, 0.08, 'highpass', 3000, 0.7); },
+    tick() { const t = T(); tone('square', 2400, t, 0.03, 0.12); noise(t, 0.03, 0.15, 'highpass', 5000, 1); },
+    type() { const t = T(); noise(t, 0.025, 0.35, 'bandpass', 2500 + Math.random() * 1500, 4); tone('square', 180, t, 0.02, 0.05); },
+    thunder() { const t = T(); noise(t, 0.08, 0.8, 'highpass', 1500, 0.7); noise(t + 0.05, 3.2, 0.5, 'lowpass', 220, 0.8); tone('sine', 45, t + 0.1, 2.5, 0.5, 30); },
+    stinger() { const t = T(); [65.4, 98, 130.8, 155.6].forEach((f, i) => tone('sawtooth', f, t, 3.2, 0.09 / (i * 0.5 + 1))); tone('sine', 65.4, t, 3, 0.5, 40); noise(t, 0.4, 0.4, 'lowpass', 900, 1); },
   };
-  const NAMES = { alarm: 'Alarme', siren: 'Sirène de police', beep: 'Badge accepté', refus: 'Badge refusé', steps: 'Pas dans l\'escalier', blackout: 'Coupure de courant', vault: 'Chambre forte', gong: 'Cloche de 6h00', success: 'Réussite', fail: 'Échec', talkie: 'Talkie des gardes', coeur: 'Battements de cœur', ping: 'Repère', dice: 'Dé qui roule' };
+  const NAMES = { alarm: 'Alarme', siren: 'Sirène de police', beep: 'Badge accepté', refus: 'Badge refusé', steps: 'Pas dans l\'escalier', blackout: 'Coupure de courant', vault: 'Chambre forte', gong: 'Cloche de 6h00', success: 'Réussite', fail: 'Échec', talkie: 'Talkie des gardes', coeur: 'Battements de cœur', ping: 'Repère', dice: 'Dé qui roule', whoosh: 'Souffle', boom: 'Impact', riser: 'Montée', tick: 'Tic', type: 'Machine à écrire', thunder: 'Tonnerre', stinger: 'Générique' };
 
   /* ----- ambiances (en boucle) ----- */
   function startAmbience(id) {
@@ -1213,6 +1498,11 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       hiss('highpass', 6000, 0.008);
       const beat = () => { const t = T(); tone('sine', 66, t, 0.16, 0.35, 40, g); tone('sine', 58, t + 0.2, 0.18, 0.25, 36, g); };
       beat(); timers.push(setInterval(beat, 1100));
+    } else if (id === 'pluie') {
+      hiss('bandpass', 1800, 0.06, 0.4); hiss('lowpass', 500, 0.08); hiss('highpass', 7000, 0.015);
+      const drop = () => { const t = T(); for (let i = 0; i < 6; i++) noise(t + Math.random() * 0.9, 0.02, 0.05 + Math.random() * 0.08, 'bandpass', 2000 + Math.random() * 3000, 6, g); };
+      drop(); timers.push(setInterval(drop, 900));
+      src('sine', 41, 0.06);
     } else {
       const { og } = src('sine', 82.4, 0.09); src('sine', 123.5, 0.04); src('sine', 61.7, 0.07);
       const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.18; lg.gain.value = 0.04; lfo.connect(lg); lg.connect(og.gain); lfo.start(); nodes.push(lfo);
@@ -1546,6 +1836,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     s.show = Object.assign(fresh().show, (d && d.show) || {});
     s.banner = Object.assign({ on: false, text: '' }, (d && d.banner) || {});
     s.scene = (d && d.scene) || null;
+    s.intro = (d && d.intro) || null;
     s.team = Array.isArray(s.team) ? s.team.slice(0, 8) : [];
     if (!Array.isArray(s.gone)) s.gone = [];
     if (!s.board || typeof s.board !== 'object') s.board = {};
@@ -2008,6 +2299,16 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       </div>`).join('') : '<p class="empty">Le MJ ajoute les braqueurs depuis la console.</p>';
     $('loot').textContent = euro(s.loot);
     $('log').innerHTML = s.log.length ? s.log.slice(0, 8).map((l) => `<div><b>${hhmm(l.t)}</b><span>${esc(l.text)}</span></div>`).join('') : '<p class="empty">Les décisions de l\'équipe s\'afficheront ici.</p>';
+    { const it = s.intro, ik = it ? it.phase + '|' + it.at : '';
+      if (ik !== lastIntro && window.ValmontIntro) {
+        const first = lastIntro === null; lastIntro = ik;
+        const nm = (s.team || []).map((m) => m.name);
+        if (!it) ValmontIntro.close();
+        else if (!first || Date.now() - it.at < 60000) {
+          if (it.phase === 'video') ValmontIntro.play({ names: nm, onEnd: () => ValmontIntro.poster({ names: nm }) });
+          else ValmontIntro.poster({ names: nm });
+        }
+      } }
     { const sc = s.scene, key = sc && sc.on && !(sc.hideAt && Date.now() > sc.hideAt) ? sc.sit + '|' + sc.st + '|' + (sc.who || '') + '|' + sc.at : '';
       if (key !== lastScene) {
         lastScene = key;
@@ -2033,7 +2334,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     } else if (lastRollAt === null) lastRollAt = s.roll ? s.roll.at : 0;
   }
 
-  let lastScene = '', sceneWho = '', sceneT = null;
+  let lastScene = '', sceneWho = '', sceneT = null, lastIntro = null;
   const hideSec = (s) => (s.au && s.au.sceneHide != null ? s.au.sceneHide : 15);
   function sceneResult(s, st) { s.scene = Object.assign({}, s.scene, { st, wait: false, proposal: null, at: Date.now(), hideAt: st !== 'action' && hideSec(s) ? Date.now() + hideSec(s) * 1000 : 0 }); }
   let confirmDel = null, confirmReset = false;
@@ -2239,6 +2540,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.zoom) { zoom = !zoom; return render(); }
     if (d.fog) return commit((s) => { s.fog = !s.fog; });
     if (d.out) { const id = selected; selected = null; return commit((s) => { const m = s.team.find((t) => t.id === id); if (m) { m.floor = ''; m.x = null; m.y = null; m.room = ''; } }); }
+    if (d.intro) return commit((s) => { s.intro = d.intro === 'off' ? null : { phase: d.intro, at: Date.now() }; });
     if (d.scwho != null) { sceneWho = d.scwho; return render(); }
     if (d.scgo) return commit((s) => { s.scene = { on: true, sit: d.scgo, st: 'action', who: sceneWho, at: Date.now(), wait: true, hideAt: 0 }; });
     if (d.scres) return commit((s) => { if (s.scene && s.scene.on) sceneResult(s, d.scres); });

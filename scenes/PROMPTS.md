@@ -25,3 +25,7 @@ black cap, a mustache and a goatee). Banknotes floating in the air. No text, no 
 - fuite-action : night street, both robbers running toward a parked van with open doors, duffel bags, distant city lights.
 - fuite-ok : inside the speeding van at dawn, bags of cash on the seats, both robbers laughing, golden sunrise ahead.
 - fuite-ko : police cars with red and blue lights block the road, both robbers stepping out with hands up, SWAT silhouettes.
+
+## L'affiche du film (scenes/affiche.jpg)
+Format vertical 2:3. Même style et mêmes deux braqueurs (joins les photos). Prompt :
+Affiche de film de braquage, peinture numérique semi-réaliste, cinématographique. Les deux braqueurs au centre, de face, en combinaison rouge, masques de clown relevés sur le front, l'air déterminé. Derrière eux, la façade néoclassique d'une vieille banque sous la pluie, de nuit, une verrière sur le toit éclairée de l'intérieur ; tout en bas, la lueur dorée d'une porte de chambre forte ouverte. Gyrophares rouges et bleus au loin, billets qui volent, pluie, reflets sur les pavés. Laisse le haut de l'image (15 %) et le tiers du bas sombres et vides pour le titre. Aucun texte, aucun logo, aucun filigrane.
