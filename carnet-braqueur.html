@@ -432,7 +432,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
       <div class="vd-die"><svg viewBox="0 0 100 100" aria-hidden="true">${SHAPE}<text class="num" x="50" y="56">${calm ? o.d : '?'}</text></svg></div>
       <div class="vd-res" aria-live="polite">
         <div class="vd-sum"><span>dé ${o.d}</span>${mods.map((m) => `<i>${m.v < 0 ? '−' : '+'}</i><span>${esc(m.label)} ${Math.abs(m.v)}</span>`).join('')}<i>=</i><span class="t">${total}</span></div>
-        ${v ? `<div class="vd-verdict ${v[0]}">${esc(v[1])}</div><div class="vd-line">${esc(v[2])}</div>` : `<div class="vd-line">Annonce <b>${total}</b> au MJ : c'est lui qui compare à la difficulté.</div>`}
+        ${!v && o.quiet ? '' : v ? `<div class="vd-verdict ${v[0]}">${esc(v[1])}</div><div class="vd-line">${esc(v[2])}</div>` : `<div class="vd-line">Annonce <b>${total}</b> au MJ : c'est lui qui compare à la difficulté.</div>`}
         ${o.dd != null && !o.hideDd ? `<div class="vd-line">Difficulté : ${o.dd}</div>` : ''}
       </div>
       ${o.help === false ? '' : `<details class="vd-help"><summary>Comment ça marche ?</summary>
@@ -580,7 +580,31 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     else if (!embedded) room = localStorage.getItem('valmont-salon') || '';
   } catch (e) {}
   let bc = null; try { bc = new BroadcastChannel('valmont-roster'); bc.onmessage = (e) => onMJ(e.data); } catch (e) {}
-  const card = () => ({ k: 'p', id: S.pid, name: S.name, role: S.role >= 0 ? ROLES[S.role].name : '', hp: S.hp, en: S.en, gear: S.gear.concat(gifts()).slice(0, 12), ts: S.vts || 0 });
+  const ROOMS = {"C":"Couloir","S1":"Chambre forte","S2":"Sas laser","S3":"Quai du fourgon","S4":"Local électrique","S5":"Archives","S6":"Poste de garde","S7":"Chaufferie","R1":"Grand hall","R2":"Bureau Ferrand","R3":"Conseillers","R4":"Vestiaires","R5":"Comptage","R6":"PC sécurité","R7":"Service","F1":"Salon de réception","F2":"Open space","F3":"Bar du gala","F4":"Salle des serveurs","F5":"Office traiteur","F6":"Salle de réunion","F7":"Bureau Valmont","T1":"Verrière","T2":"Cabanon","T3":"Climatisation","T4":"Gaine","T5":"Antenne relais","T6":"Rebord est","T7":"Échelle"};
+  const FLOOR_OF = { S: 'sous-sol', R: 'rdc', F: 'etage', T: 'toit' };
+  let known = []; try { known = JSON.parse(localStorage.getItem('valmont-known') || '[]'); } catch (e) {}
+  const cards = {}; // persos du salon (pour reprendre le sien)
+  // sauvegarde compacte du perso : suffit à le retrouver sur un autre téléphone
+  const snap = () => ({ g: S.gear, o: S.prep.open, pe: S.prep.penalty, or: S.prep.order, m: S.prep.minutes, s: S.prep.start, e: S.prep.end,
+    d: Object.fromEntries(Object.entries(S.prep.done).map(([k, v]) => [k, [v.ok ? 1 : 0, v.d, v.mod, v.boost ? 1 : 0, v.total, v.gift || '']])) });
+  const card = () => ({ k: 'p', id: S.pid, name: S.name, role: S.role >= 0 ? ROLES[S.role].name : '', hp: S.hp, en: S.en, gear: S.gear.concat(gifts()).slice(0, 12), ts: S.vts || 0, sv: snap() });
+  function restoreFrom(c) {
+    const ri = ROLES.findIndex((r) => r.name === c.role);
+    if (ri < 0) return;
+    const sv = c.sv || {};
+    S = blank();
+    S.pid = c.id; S.name = c.name; S.role = ri; S.hp = c.hp; S.en = c.en; S.vts = c.ts || 0; S.gear = sv.g || [];
+    S.prep = Object.assign(S.prep, { open: sv.o || [], penalty: sv.pe || 0, order: sv.or || [], minutes: sv.m || 15, start: sv.s || 0, end: sv.e || 0,
+      done: Object.fromEntries(Object.entries(sv.d || {}).map(([k, a]) => [k, { ok: !!a[0], d: a[1], mod: a[2], boost: !!a[3], total: a[4], gift: a[5] || null }])) });
+    lastHp = S.hp; lastEn = S.en; S.step = 'fiche';
+    save(); push(); render();
+  }
+  // message vers le MJ (même navigateur et relais)
+  function send(o) {
+    o.ts = Date.now(); o.mid = Math.random().toString(36).slice(2, 9);
+    try { bc && bc.postMessage(o); } catch (e) {}
+    if (relay) relay.send(o);
+  }
   function push() {
     if (!S.name || S.role < 0) return;
     const c = card();
@@ -589,10 +613,24 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     if (relay) relay.send(c).then((ok) => { rstatus = ok ? 'sent' : 'off'; showRelay(); });
   }
   function onMJ(d) {
-    if (!d || d.k !== 'm' || d.pid !== S.pid || (d.ts || 0) <= (S.vts || 0)) return;
-    S.hp = d.hp; S.en = d.en; lastHp = S.hp; lastEn = S.en; S.vts = d.ts;
-    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
-    if (S.step === 'fiche') render();
+    if (!d) return;
+    if (d.k === 'p') {
+      if (d.id !== S.pid && d.name && d.role) { cards[d.id] = d; if (!embedded && S.step === 'perso' && S.role < 0 && !S.name && document.activeElement && document.activeElement.id !== 'name' && document.activeElement.id !== 'room') render(); }
+    } else if (d.k === 'v') {
+      known = Array.isArray(d.seen) ? d.seen : []; try { localStorage.setItem('valmont-known', JSON.stringify(known)); } catch (e) {}
+      if (S.step === 'fiche' && !(document.activeElement && document.activeElement.id === 'goText')) render();
+    } else if (d.k === 'c') {
+      // le MJ lance le chrono de repérage : il démarre tout seul sur ce carnet
+      const end = d.at + d.minutes * 60000;
+      if (S.role >= 0 && !S.prep.start && S.prep.mjAt !== d.at && end - Date.now() > 5000) {
+        S.prep.mjAt = d.at; S.prep.minutes = d.minutes; S.prep.start = Date.now(); S.prep.end = end; S.step = 'reperage'; save(); render();
+      }
+    } else if (d.k === 'm') {
+      if (d.pid !== S.pid || (d.ts || 0) <= (S.vts || 0)) return;
+      S.hp = d.hp; S.en = d.en; lastHp = S.hp; lastEn = S.en; S.vts = d.ts;
+      try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+      if (S.step === 'fiche') render();
+    }
   }
   function startRelay() {
     if (relay) { relay.close(); relay = null; }
@@ -621,6 +659,12 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   }
 
   /* ---------- 1. perso ---------- */
+  function restoreHtml() {
+    const list = Object.values(cards).filter((c) => c.name && c.role);
+    if (embedded || S.role >= 0 || S.name || !list.length) return '';
+    return `<div class="card"><b>Reprendre mon perso</b><p class="muted" style="font-size:.88rem">Tu as déjà créé un perso dans ce salon ? Touche-le pour le retrouver, avec ses PV, son matériel et son repérage.</p>
+      <div style="display:grid;gap:6px">${list.map((c) => `<button class="btn" data-restore="${esc(c.id)}">${esc(c.name)} · ${esc(c.role)}</button>`).join('')}</div></div>`;
+  }
   function perso() {
     $view.innerHTML = `<div style="display:grid;gap:14px">
       <div class="card"><h2>Ton braqueur</h2>
@@ -628,6 +672,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
         <input type="text" id="name" maxlength="18" placeholder="Ex. : Le Chat" value="${esc(S.name)}" autocomplete="off"></div>
       ${embedded ? '' : `<div class="card"><label class="muted" for="room">Code du salon (affiché sur la télé)</label>
         <input type="text" id="room" maxlength="10" placeholder="Ex. : K7M2QX" value="${esc(room)}" autocomplete="off" autocapitalize="characters"><p class="muted" id="relayState" style="font-size:.85rem"></p></div>`}
+      ${restoreHtml()}
       <p class="muted">Choisis un rôle. Mettez-vous d'accord avec ton équipe pour ne pas prendre le même.</p>
       <div class="roles">${ROLES.map((r, i) => `
         <button class="role ${S.role === i ? 'on' : ''}" data-role="${i}" aria-pressed="${S.role === i}">
@@ -717,6 +762,21 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   }
 
   /* ---------- 4. fiche ---------- */
+  function moveHtml() {
+    const opts = known.map((k) => { const [fl, id] = k.split('|'); return ROOMS[id] ? `<option value="${esc(k)}">${esc(ROOMS[id])}</option>` : ''; }).join('');
+    return `<div class="card"><b>Je me déplace</b><p class="muted" style="font-size:.88rem">Dis au MJ où tu vas. Il valide, et ton pion bouge sur la télé.</p>
+      <select id="goSel" style="font:500 1rem var(--body);background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:12px;width:100%" aria-label="Pièce connue">${opts ? '<option value="">Une pièce que je connais…</option>' + opts : '<option value="">Aucune pièce connue pour l\'instant</option>'}</select>
+      <input type="text" id="goText" maxlength="60" placeholder="ou écris où tu vas (ex. : je monte au toit)" autocomplete="off">
+      <button class="btn full" data-go="1">Demander au MJ</button><p class="muted" id="goMsg" style="font-size:.85rem"></p></div>`;
+  }
+  function askMove() {
+    const sel = document.getElementById('goSel').value, txt = document.getElementById('goText').value.trim().slice(0, 60);
+    if (!sel && !txt) return;
+    const [fl, id] = sel ? sel.split('|') : ['', ''];
+    send({ k: 'g', pid: S.pid, who: S.name, floor: fl, room: id, rn: sel ? ROOMS[id] : '', text: txt });
+    document.getElementById('goText').value = ''; document.getElementById('goSel').value = '';
+    const m = document.getElementById('goMsg'); m.textContent = 'Demande envoyée au MJ.';
+  }
   function fiche() {
     const r = role();
     if (!r) return go('perso');
@@ -729,6 +789,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
         <div class="stp"><button data-pool="en" data-d="-1" aria-label="Dépenser 1 énergie">−</button><div><small>ÉNERGIE</small><b class="en">${S.en}/${r.en}</b></div><button data-pool="en" data-d="1" aria-label="Regagner 1 énergie">+</button></div>
       </div>
       ${S.hp <= 0 ? '<p class="alertline">Tu es à terre : un coéquipier doit te relever avec un kit médical.</p>' : ''}
+      ${moveHtml()}
       <div class="card"><b>Lancer le d20</b><p class="muted" style="font-size:.88rem">Touche la compétence que le MJ te demande. Il te dira si tu as réussi.</p>
         <label class="boost"><input type="checkbox" id="fboost" ${S.en < 1 ? 'disabled' : ''}><span>Effort : <b>+3</b> pour 1 énergie</span></label>
         <div class="skills">${SKILLS.map((k, j) => `<button class="skill" data-roll="${j}"><small>${k}</small><b>+${r.s[j]}</b><span>Lancer</span></button>`).join('')}</div>
@@ -750,6 +811,8 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     if (!b || b.disabled) return;
     const d = b.dataset;
     if (b.id !== 'resetAll') confirmReset = false;
+    if (d.restore) { const c = cards[d.restore]; if (c) restoreFrom(c); return; }
+    if (d.go != null) return askMove();
     if (d.tab) return go(d.tab);
     if (d.next) return go(d.next);
     if (d.role != null) { const r = ROLES[+d.role]; S.role = +d.role; S.hp = r.hp; S.en = r.en; save(); return render(); }
@@ -776,6 +839,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
       if (dv === 1) S.prep.penalty += 1;
       if (dv === 20) S.prep.end += 60000;
       S.prep.cur = null; S.last = l.id; save();
+      send({ k: 'r', pid: S.pid, who: S.name, id: l.id, t: l.t, ok, nat: dv === 20 ? 20 : dv === 1 ? 1 : 0, mj: l.mj || '' });
       ValmontDice.overlay({ d: dv, title: l.t, mods: [{ label: l.skill, v: mod }, { label: 'effort', v: c.boost ? 3 : 0 }], dd: l.dd, hideDd: true }, render);
       return;
     }
@@ -786,6 +850,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
       if (boost) { S.en -= 1; save(); }
       const dv = 1 + Math.floor(Math.random() * 20), total = dv + r.s[j] + (boost ? 3 : 0);
       render();
+      send({ k: 'd', pid: S.pid, who: S.name, skill: SKILLS[j], d: dv, mod: r.s[j] + (boost ? 3 : 0) });
       ValmontDice.overlay({ d: dv, title: S.name + ' · ' + SKILLS[j], mods: [{ label: SKILLS[j], v: r.s[j] }, { label: 'effort', v: boost ? 3 : 0 }] });
       return;
     }

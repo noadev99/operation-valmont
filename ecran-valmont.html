@@ -207,6 +207,19 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
   <div class="card"><h3><span>Salon</span><span id="cSalonSt"></span></h3><div id="cSalon"></div></div>
 
+  <div class="card"><h3><span>Automatismes</span><span id="cAuNow"></span></h3>
+    <div class="btns" id="cClockBtns"></div>
+    <div class="btns" id="cAu"></div>
+    <p class="hint">Plus tu en actives, moins tu as à faire. Tu peux toujours tout corriger à la main.</p>
+    <h3 style="margin-top:6px"><span>Difficulté des prochains jets</span></h3>
+    <div class="btns" id="cDD"></div>
+    <p class="hint">Les jets des joueurs arrivent tout seuls sur la télé. Avec une difficulté choisie, ils sont jugés tout seuls.</p>
+  </div>
+
+  <div class="card"><h3><span>Demandes des joueurs</span><span id="cReqN"></span></h3><div id="cReq"></div></div>
+
+  <div class="card"><h3>Fil du MJ <small class="hint">(toi seul)</small></h3><div class="logitems" id="cFeed"></div></div>
+
   <div class="card board"><h3><span>Plateau</span><span id="cFloorName"></span></h3>
     <div class="grid4" id="cFloors"></div>
     <div class="modes" id="cModes" role="group" aria-label="Mode du plateau"></div>
@@ -279,6 +292,11 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <div class="btns" id="quickBanner"></div>
     <form class="row" id="bannerForm" autocomplete="off"><input id="bannerInput" maxlength="60" placeholder="Texte libre" aria-label="Texte de l'annonce"><button class="b" type="submit">Afficher</button></form>
     <button class="b red" id="bannerOff">Masquer l'annonce</button>
+  </div>
+
+  <div class="card"><h3>Fin de partie</h3>
+    <p class="hint">Affiche sur la télé le titre de l'équipe et le butin.</p>
+    <div class="btns"><button class="b go" data-end="1" type="button">Terminer la partie</button></div>
   </div>
 
   <div class="card"><h3>Partie</h3>
@@ -847,7 +865,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       <div class="vd-die"><svg viewBox="0 0 100 100" aria-hidden="true">${SHAPE}<text class="num" x="50" y="56">${calm ? o.d : '?'}</text></svg></div>
       <div class="vd-res" aria-live="polite">
         <div class="vd-sum"><span>dé ${o.d}</span>${mods.map((m) => `<i>${m.v < 0 ? '−' : '+'}</i><span>${esc(m.label)} ${Math.abs(m.v)}</span>`).join('')}<i>=</i><span class="t">${total}</span></div>
-        ${v ? `<div class="vd-verdict ${v[0]}">${esc(v[1])}</div><div class="vd-line">${esc(v[2])}</div>` : `<div class="vd-line">Annonce <b>${total}</b> au MJ : c'est lui qui compare à la difficulté.</div>`}
+        ${!v && o.quiet ? '' : v ? `<div class="vd-verdict ${v[0]}">${esc(v[1])}</div><div class="vd-line">${esc(v[2])}</div>` : `<div class="vd-line">Annonce <b>${total}</b> au MJ : c'est lui qui compare à la difficulté.</div>`}
         ${o.dd != null && !o.hideDd ? `<div class="vd-line">Difficulté : ${o.dd}</div>` : ''}
       </div>
       ${o.help === false ? '' : `<details class="vd-help"><summary>Comment ça marche ?</summary>
@@ -1299,7 +1317,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
   function fresh() {
     return { floor: 'rdc', t: 30, alert: 0, show: { cams: false, guards: false, lasers: false, labels: true }, team: [], loot: 0, log: [], banner: { on: false, text: '' }, roll: null, prepEnd: 0,
-      fog: true, vis: {}, seen: {}, gpos: {}, ping: null, snd: null, amb: '', vol: 0.7, auto: true, gone: [] };
+      fog: true, vis: {}, seen: {}, gpos: {}, ping: null, snd: null, amb: '', vol: 0.7, auto: true, gone: [],
+      t0: Date.now(), mids: [], req: [], feed: [], fired: [], dd: null, calmAt: 0, _la: 0, au: { clock: false, speed: 3, events: true, calm: true, reveal: true, move: false } };
   }
   function norm(d) {
     const s = Object.assign(fresh(), d || {});
@@ -1307,6 +1326,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     s.banner = Object.assign({ on: false, text: '' }, (d && d.banner) || {});
     s.team = Array.isArray(s.team) ? s.team.slice(0, 8) : [];
     if (!Array.isArray(s.gone)) s.gone = [];
+    ['mids', 'req', 'feed', 'fired'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
+    s.au = Object.assign({ clock: false, speed: 3, events: true, calm: true, reveal: true, move: false }, s.au || {});
     ['vis', 'seen', 'gpos'].forEach((k) => { if (!s[k] || typeof s[k] !== 'object') s[k] = {}; });
     // anciennes positions par pièce → position libre au centre de la pièce
     s.team.forEach((m, i) => {
@@ -1339,11 +1360,132 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   function commit(fn) {
     if (!canWrite) return;
     fn(state);
+    afterAlert();
     render();
     saveLocal();
     try { chan && chan.postMessage({ state }); } catch (e) {}
-    relayState();
+    relayState(); publishKnown();
     if (ref) { quietUntil = Date.now() + 1500; clearTimeout(timer); timer = setTimeout(flush, 250); }
+  }
+
+  /* ---------- automatismes : alerte, horloge, événements ---------- */
+  const logAdd = (s, text) => { s.log.unshift({ t: s.t, text: String(text).slice(0, 110) }); s.log = s.log.slice(0, 40); };
+  const feedAdd = (s, text) => { s.feed.unshift({ t: s.t, text: String(text).slice(0, 260) }); s.feed = s.feed.slice(0, 14); };
+  // quand l'alerte monte : on repart de zéro pour « le calme revient » ; aux paliers 7 et 10 : annonce et journal
+  function afterAlert() {
+    const before = state._la || 0, now = state.alert;
+    if (now > before) state.calmAt = state.t;
+    state._la = now;
+    if (now > before && isConsole()) {
+      if (before < 7 && now >= 7) setTimeout(() => announce('ALARME ! LA POLICE EST APPELÉE', 'alarm', 'Alerte ' + now + ' : la police est appelée, elle arrive dans 5 tours.'), 0);
+      else if (before < 10 && now >= 10) setTimeout(() => announce('BOUCLAGE : LA BANQUE EST ENCERCLÉE', 'siren', 'Alerte 10 : la banque est encerclée.'), 0);
+    }
+  }
+  let bannerTimer = null;
+  function announce(text, sound, log) {
+    commit((s) => { s.banner = { on: true, text }; if (sound) s.snd = { id: sound, at: Date.now() }; if (log) logAdd(s, log); });
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => commit((s) => { if (s.banner.text === text) s.banner = { on: false, text }; }), 7000);
+  }
+  // événements à heure fixe (minutes depuis 21h00)
+  const EVENTS = [
+    [140, 'Hélène monte à son bureau (23h20)', 'ping', 'HÉLÈNE MONTE À SON BUREAU'],
+    [150, 'Le discours d\'Hélène commence (23h30)', 'gong', 'LE DISCOURS COMMENCE'],
+    [210, 'Relève des gardes (00h30)', 'talkie', 'RELÈVE DES GARDES'],
+    [240, 'Fin du gala (01h00)', 'steps', 'FIN DU GALA'],
+    [300, 'Ronde de Kessler (02h00)', 'steps', 'RONDE DE KESSLER'],
+    [360, 'Les sirènes de la police (03h00)', 'siren', 'LA POLICE EST EN ROUTE'],
+    [540, 'Le fourgon arrive (06h00)', 'gong', '6H00 : LE FOURGON ARRIVE'],
+  ];
+  function setTime(newT) {
+    let hit = null;
+    commit((s) => {
+      const old = s.t; s.t = clamp(Math.round(newT), 0, 600);
+      if (s.au.events) EVENTS.forEach(([t, label, snd, ban]) => {
+        if (old < t && s.t >= t && !s.fired.includes(t)) {
+          s.fired.push(t);
+          if (t === 360) { const inside = s.team.some((m) => m.floor); if (!inside) { logAdd(s, label + ' : personne n\'est dedans'); return; } s.alert = Math.max(s.alert, 7); }
+          logAdd(s, label); hit = [ban, snd];
+          feedAdd(s, label + (t === 140 ? ' : bonne fenêtre pour le coffre.' : t === 150 ? ' : la coupe d\'Hélène reste sur le buffet.' : t === 210 ? ' : le PC sécurité est vide 5 minutes.' : t === 300 ? ' : cachette Discrétion 15.' : ''));
+        }
+      });
+      // le calme revient : 15 minutes de nuit sans que l'alerte monte
+      if (s.au.calm && s.alert > 0 && s.alert < 7 && s.t - s.calmAt >= 15) { s.alert -= 1; s.calmAt = s.t; logAdd(s, 'Le calme revient : alerte ' + s.alert); }
+    });
+    if (hit) announce(hit[0], hit[1]);
+  }
+  let tacc = 0;
+  setInterval(() => {
+    if (!isConsole() || !state.au.clock || !canWrite) return;
+    tacc += state.au.speed / 6; // une fois toutes les 10 s
+    if (tacc >= 1) { const n = Math.floor(tacc); tacc -= n; setTime(state.t + n); }
+  }, 10000);
+
+  /* ---------- messages des carnets (persos, repérage, jets, déplacements) ---------- */
+  const REVEALS = { facade: { guards: true }, cams: { cams: true }, planning: { lasers: true }, cadastre: { rooms: ['sous-sol|S7', 'toit|T4'] }, helene: { rooms: ['etage|F7'] } };
+  const REVEAL_TXT = { guards: 'les gardes', cams: 'les caméras', lasers: 'les lasers', rooms: 'de nouvelles pièces' };
+  function revealSpec(s, spec) {
+    P.floors.forEach((f) => {
+      const info = P.info(f.key);
+      if (spec.cams) for (let i = 0; i < info.cams; i++) s.vis[`${f.key}|cam|${i}`] = 1;
+      if (spec.guards) info.guards.forEach((g, i) => (s.vis[`${f.key}|guard|${i}`] = 1));
+      if (spec.lasers && info.lasers) s.vis[`${f.key}|lasers|0`] = 1;
+    });
+    (spec.rooms || []).forEach((k) => (s.seen[k] = true));
+  }
+  function applyMove(s, rq) {
+    const m = s.team.find((t) => t.pid === rq.pid);
+    const rr = rq.room && rq.floor ? P.info(rq.floor).rooms.find((x) => x.id === rq.room) : null;
+    if (!m || !rr) return;
+    m.floor = rq.floor; m.room = ''; m.x = Math.round(rr.x + rr.w / 2 + (Math.random() * 50 - 25)); m.y = Math.round(rr.y + rr.h / 2 + 14 + Math.random() * 14);
+    s.seen[`${rq.floor}|${rq.room}`] = true; s.floor = rq.floor;
+    logAdd(s, m.name + ' entre : ' + rr.name);
+  }
+  const HANDLE = {
+    r(s, d) {
+      logAdd(s, d.who + ' termine une piste de repérage.');
+      feedAdd(s, `${d.who} · ${d.t} : ${d.ok ? 'réussi' : 'raté'}${d.nat === 20 ? ' (20 naturel : +1 min)' : ''}${d.ok && d.mj ? ' · ' + d.mj : ''}`);
+      if (s.au.reveal && d.ok && REVEALS[d.id]) { revealSpec(s, REVEALS[d.id]); const what = Object.keys(REVEALS[d.id]).map((k) => REVEAL_TXT[k]).join(', '); logAdd(s, 'Repéré : ' + what + '.'); }
+      if (d.nat === 1) { s.alert = Math.min(10, s.alert + 1); logAdd(s, d.who + ' s\'est fait remarquer : alerte ' + s.alert); }
+    },
+    d(s, d) {
+      const total = d.d + d.mod, dd = s.dd;
+      let verdict = 'Jet', win = true;
+      if (d.d === 20) verdict = 'Réussite spectaculaire !';
+      else if (d.d === 1) { verdict = 'Catastrophe !'; win = false; }
+      else if (dd) { win = total >= dd; verdict = win ? 'Réussite' : dd - total <= 3 ? 'Raté de peu' : 'Échec'; }
+      s.roll = { at: Date.now(), who: d.who, skill: d.skill, d: d.d, mod: d.mod, dd: dd || null, total, verdict, win };
+      logAdd(s, `${d.who} · ${d.skill} : ${total}${dd ? (win ? ' (réussi)' : ' (raté)') : ''}`);
+      feedAdd(s, `${d.who} · ${d.skill} : dé ${d.d} + ${d.mod} = ${total}${dd ? ' contre ' + dd + ' → ' + verdict + (verdict === 'Raté de peu' ? ' : propose une réussite avec un coût' : '') : ' : dis-lui la difficulté'}`);
+      if (d.d === 1) { s.alert = Math.min(10, s.alert + 1); logAdd(s, '1 naturel : alerte ' + s.alert); }
+    },
+    g(s, d) {
+      const rq = { id: d.mid || String(Date.now()), pid: d.pid, who: d.who, floor: d.floor, room: d.room, rn: d.rn, text: d.text, at: Date.now() };
+      if (s.au.move && rq.room) applyMove(s, rq); else { s.req.unshift(rq); s.req = s.req.slice(0, 8); }
+    },
+  };
+  function onMsg(d) {
+    if (!d || !isConsole()) return;
+    if (d.k === 'p') return applyCard(d);
+    if (!HANDLE[d.k]) return;
+    if (d.ts && d.ts < (state.t0 || 0) - 120000) return;       // message d'une partie précédente
+    if (d.mid && state.mids.includes(d.mid)) return;            // déjà traité
+    commit((s) => { if (d.mid) { s.mids.unshift(d.mid); s.mids = s.mids.slice(0, 80); } HANDLE[d.k](s, d); });
+  }
+  // la console dit aux carnets ce qui est découvert (pour la liste « Je me déplace »)
+  let lastKnown = '';
+  function publishKnown() {
+    const seen = Object.keys(state.seen).filter((k) => state.seen[k]);
+    const key = seen.join(',');
+    if (key === lastKnown) return; lastKnown = key;
+    const msg = { k: 'v', seen, ts: Date.now() };
+    try { rbc && rbc.postMessage(msg); } catch (e) {}
+    if (relay) relay.send(msg);
+  }
+  function broadcastChrono(minutes) {
+    const msg = { k: 'c', at: Date.now(), minutes };
+    try { rbc && rbc.postMessage(msg); } catch (e) {}
+    if (relay) relay.send(msg);
   }
 
   /* ---------- salon : persos des joueurs et relais entre appareils ---------- */
@@ -1354,7 +1496,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   let relay = null, relayStatus = '', lastPub = 0, pubTimer = null, sTimer = null, rbc = null, pendS = null, primed = false;
   const canRelay = () => !window.claude && !embedded && !!window.ValmontRelay;
   const setRoom = (c) => { room = c; try { localStorage.setItem('valmont-salon', c); } catch (e) {} };
-  try { rbc = new BroadcastChannel('valmont-roster'); rbc.onmessage = (e) => { if (e.data && e.data.k === 'p') applyCard(e.data); }; } catch (e) {}
+  try { rbc = new BroadcastChannel('valmont-roster'); rbc.onmessage = (e) => onMsg(e.data); } catch (e) {}
   window.addEventListener('storage', (e) => {
     if (e.key === 'valmont-roster') loadRoster();
     if (e.key === 'valmont-salon' && e.newValue && e.newValue !== room) { room = e.newValue; startRelay(true); render(); }
@@ -1400,7 +1542,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
         if (!primed) { primed = true; lastRollAt = pendS.roll ? pendS.roll.at : 0; lastSnd = pendS.snd ? pendS.snd.at : 0; lastPing = pendS.ping ? pendS.ping.at : 0; lastAlert = pendS.alert; }
         state = norm(pendS); saveLocal(); render();
       }, 250);
-    } else if (d.k === 'p') applyCard(d);
+    } else onMsg(d);
   }
   // la console envoie l'état à la télé (au plus une fois toutes les 1,4 s, et toujours le dernier)
   function relayState() {
@@ -1410,7 +1552,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       lastPub = Date.now();
       const s = JSON.parse(JSON.stringify(state));
       s.team.forEach((m) => { delete m.gear; delete m.pid; });
-      s.log = s.log.slice(0, 12); delete s.gone;
+      s.log = s.log.slice(0, 12); ['gone', 'mids', 'req', 'feed', 'fired'].forEach((k) => delete s[k]);
       const enc = new TextEncoder();
       while (enc.encode(JSON.stringify({ k: 's', d: s })).length > 3900 && s.log.length) s.log.pop();
       relay.send({ k: 's', d: s });
@@ -1555,7 +1697,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       if (lastRollAt !== null) {
         const r = s.roll;
         if (s.auto) ValmontSound.play('dice');
-        ValmontDice.create($('rollfx'), { d: r.d, title: r.who + ' · ' + r.skill, mods: [{ label: r.skill, v: r.mod }], dd: r.dd, help: false, size: 'big' });
+        ValmontDice.create($('rollfx'), { d: r.d, title: r.who + ' · ' + r.skill, mods: [{ label: r.skill, v: r.mod }], dd: r.dd, help: false, size: 'big', quiet: true });
         $('rollfx').hidden = false;
         clearTimeout(rollHide); rollHide = setTimeout(() => { $('rollfx').hidden = true; }, 11000);
       }
@@ -1577,9 +1719,21 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       <label class="hint" style="display:grid;gap:4px">Lien de la télé<input readonly id="lkT" value="${esc(tv)}"></label>
       <div class="btns"><button class="b sm" data-copy="lkP" type="button">Copier le lien joueurs</button><button class="b sm" data-copy="lkT" type="button">Copier le lien télé</button></div>`;
   }
+  function renderAuto() {
+    const s = state, au = s.au;
+    $('cClockBtns').innerHTML = `<button class="b ${au.clock ? 'on' : 'go'}" data-clock="1" type="button">${au.clock ? 'Pause de la nuit' : 'Démarrer la nuit'}</button>` +
+      [2, 3, 5].map((v) => `<button class="b sm ${au.speed === v ? 'on' : ''}" data-speed="${v}" type="button">${v} min / min</button>`).join('');
+    $('cAuNow').textContent = au.clock ? 'nuit en marche' : '';
+    $('cAu').innerHTML = [['events', 'Événements à heure fixe'], ['calm', 'Le calme revient'], ['reveal', 'Révélations du repérage'], ['move', 'Déplacements sans validation']]
+      .map(([k, l]) => `<button class="b sm ${au[k] ? 'on' : ''}" data-au="${k}" aria-pressed="${!!au[k]}" type="button">${l} : ${au[k] ? 'oui' : 'non'}</button>`).join('');
+    $('cDD').innerHTML = [[null, 'Aucune'], [8, '8 facile'], [12, '12 normal'], [15, '15 difficile'], [18, '18 très dur']].map(([v, l]) => `<button class="b sm ${s.dd === v ? 'on' : ''}" data-dd="${v}" type="button">${l}</button>`).join('');
+    $('cReqN').textContent = s.req.length ? s.req.length : '';
+    $('cReq').innerHTML = s.req.length ? s.req.map((r) => `<div class="logitems"><div style="grid-template-columns:1fr auto auto"><span><b>${esc(r.who)}</b> ${r.rn ? 'veut aller : ' + esc(r.rn) : '« ' + esc(r.text) + ' »'}${r.rn && r.text ? ' · ' + esc(r.text) : ''}</span><button data-rq="ok" data-id="${esc(r.id)}" type="button" style="color:var(--green)">${r.rn ? 'Accepter' : 'Vu'}</button>${r.rn ? `<button data-rq="no" data-id="${esc(r.id)}" type="button">Refuser</button>` : ''}</div></div>`).join('') : '<p class="hint">Aucune demande. Les joueurs te les envoient depuis leur fiche (« Je me déplace »).</p>';
+    $('cFeed').innerHTML = s.feed.length ? s.feed.map((f) => `<div><b>${hhmm(f.t)}</b><span>${esc(f.text)}</span><span></span></div>`).join('') : '<p class="hint">Ce que les joueurs trouvent et lancent s\'affiche ici, avec ce que tu dois en faire.</p>';
+  }
   function renderConsole() {
     const s = state;
-    renderSalon();
+    renderSalon(); renderAuto();
     renderBoard();
     $('cFloors').innerHTML = P.floors.slice().reverse().map((f) => `<button class="b ${f.key === s.floor ? 'on' : ''}" data-floor="${f.key}">${f.key === 'toit' ? 'Toit' : f.key === 'etage' ? '1er' : f.key === 'rdc' ? 'RDC' : '−1'}</button>`).join('');
     $('cClock').textContent = hhmm(s.t);
@@ -1656,7 +1810,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   let drag = null, lastLive = 0;
   function placeMember(id, x, y, final) {
     const fl = state.floor;
-    const apply = (s) => { const m = s.team.find((t) => t.id === id); if (!m) return; m.floor = fl; m.x = Math.round(x); m.y = Math.round(y); m.room = ''; const r = P.roomAt(fl, x, y); if (r && s.fog) s.seen[`${fl}|${r.id}`] = true; };
+    const apply = (s) => { const m = s.team.find((t) => t.id === id); if (!m) return; const was = m.floor === fl && m.x != null ? P.roomAt(fl, m.x, m.y) : null; m.floor = fl; m.x = Math.round(x); m.y = Math.round(y); m.room = ''; const r = P.roomAt(fl, x, y); if (r && s.fog) s.seen[`${fl}|${r.id}`] = true; if (final && r && (!was || was.id !== r.id)) logAdd(s, m.name + ' entre : ' + r.name); };
     if (final) commit(apply); else liveCommit(apply);
   }
   function placeGuard(i, x, y, final) {
@@ -1670,7 +1824,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     lastLive = now;
     fn(state); saveLocal();
     try { chan && chan.postMessage({ state }); } catch (e) {}
-    relayState();
+    relayState(); publishKnown();
     if (ref) { quietUntil = now + 1500; clearTimeout(timer); timer = setTimeout(flush, 120); }
   }
   const cplan = document.getElementById('cPlan');
@@ -1712,7 +1866,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (bmode === 'ping') { const [x, y] = svgPoint(svg, e); commit((s) => { s.ping = { floor: s.floor, x: Math.round(x), y: Math.round(y), at: Date.now() }; }); return; }
     // révéler
     const c = e.target.closest('[data-cam]'), g = e.target.closest('[data-guard]'), l = e.target.closest('[data-lasers]'), r = e.target.closest('[data-room]');
-    const cycle = (kind, i) => commit((s) => { const k = `${s.floor}|${kind}|${i}`; s.vis[k] = (vis(kind, i) + 1) % 3; });
+    const cycle = (kind, i) => commit((s) => { const k = `${s.floor}|${kind}|${i}`; const nv = (vis(kind, i) + 1) % 3; s.vis[k] = nv; if (nv === 2) logAdd(s, kind === 'cam' ? 'Une caméra est coupée.' : kind === 'guard' ? 'Un garde est neutralisé.' : 'Les lasers sont coupés.'); });
     if (c) cycle('cam', c.dataset.cam);
     else if (g) cycle('guard', g.dataset.guard);
     else if (l) cycle('lasers', 0);
@@ -1727,6 +1881,12 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const d = b.dataset;
     if (d.del == null && confirmDel) { confirmDel = null; }
     if (b.id !== 'resetBtn') confirmReset = false;
+    if (b.hasAttribute('data-clock')) return commit((s) => { s.au.clock = !s.au.clock; });
+    if (d.speed) return commit((s) => { s.au.speed = +d.speed; });
+    if (d.au) return commit((s) => { s.au[d.au] = !s.au[d.au]; });
+    if (b.hasAttribute('data-dd')) return commit((s) => { s.dd = d.dd === 'null' ? null : +d.dd; });
+    if (d.rq) { const rq = state.req.find((r) => r.id === d.id); return commit((s) => { if (rq && d.rq === 'ok') applyMove(s, rq); s.req = s.req.filter((r) => r.id !== d.id); }); }
+    if (d.end) { const s0 = state; const title = s0.alert < 4 && s0.team.every((m) => m.hp > 0) ? 'FANTÔMES DE PORT-SAINTE-CLAIRE' : s0.alert >= 10 ? 'ÉQUIPE ENCERCLÉE' : 'BRAQUAGE TERMINÉ'; return announce(title + ' · ' + euro(s0.loot), s0.alert >= 10 ? 'siren' : 'success', 'Fin de la partie : ' + euro(s0.loot) + ', alerte ' + s0.alert + '.'); }
     if (d.snd) return commit((s) => { s.snd = { id: d.snd, at: Date.now() }; });
     if (d.amb != null && b.hasAttribute('data-amb')) return commit((s) => { s.amb = d.amb; });
     if (b.id === 'cAuto') return commit((s) => { s.auto = !s.auto; });
@@ -1743,9 +1903,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
         for (let i = 0; i < n; i++) s.vis[`${s.floor}|${kind}|${i}`] = +v;
       });
     }
-    if (d.prep != null) commit((s) => { s.prepEnd = Number(d.prep) ? Date.now() + Number(d.prep) * 60000 : 0; });
+    if (d.prep != null) { commit((s) => { s.prepEnd = Number(d.prep) ? Date.now() + Number(d.prep) * 60000 : 0; }); if (Number(d.prep)) broadcastChrono(Number(d.prep)); }
     else if (d.floor) commit((s) => { s.floor = d.floor; });
-    else if (d.time) commit((s) => { s.t = clamp(s.t + Number(d.time), 0, 600); });
+    else if (d.time) setTime(state.t + Number(d.time));
     else if (d.alert != null) commit((s) => { s.alert = Number(d.alert); });
     else if (d.show) commit((s) => { s.show[d.show] = !s.show[d.show]; });
     else if (d.hp) { commit(() => { const m = member(d.hp); if (m) { m.hp = clamp(m.hp + Number(d.d), 0, m.hpMax); m.ts = Date.now(); } }); pushToPlayer(member(d.hp)); }
@@ -1762,7 +1922,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       if (!confirmReset) { confirmReset = true; render(); return; }
       confirmReset = false;
       selected = null;
-      commit((s) => { const team = s.team.map((m) => Object.assign({}, m, { hp: m.hpMax, en: m.enMax, floor: '', room: '', x: null, y: null, ts: Date.now() })); Object.assign(s, fresh(), { team, gone: s.gone }); });
+      commit((s) => { const team = s.team.map((m) => Object.assign({}, m, { hp: m.hpMax, en: m.enMax, floor: '', room: '', x: null, y: null, ts: Date.now() })); Object.assign(s, fresh(), { team, gone: s.gone }); tacc = 0; });
       state.team.forEach(pushToPlayer);
     } else render();
   });
