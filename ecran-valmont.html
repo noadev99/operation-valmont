@@ -1412,9 +1412,29 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   let ctx = null, master = null, vol = 0.7, amb = null, ambId = '';
   const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
 
+  let fxBus = null, rev = null;
+  function impulse(sec, decay) {
+    const n = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(2, n, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay); }
+    return b;
+  }
+  /* vrais enregistrements facultatifs : sons/<id>.mp3 (ou .wav, .ogg) remplacent le son fabriqué */
+  const SAMPLES = {}, tried = {};
+  function loadSample(id) {
+    if (tried[id] || typeof fetch !== 'function' || location.protocol === 'file:') return; tried[id] = true;
+    (async () => { for (const e of ['mp3', 'wav', 'ogg', 'm4a']) { try { const r = await fetch(`sons/${id}.${e}`); if (!r.ok) continue; const ab = await r.arrayBuffer(); SAMPLES[id] = await ctx.decodeAudioData(ab); return; } catch (er) {} } })();
+  }
+  function playSample(id) { const b = SAMPLES[id]; if (!b) return false; const s = ctx.createBufferSource(); s.buffer = b; s.connect(fxBus); s.start(); return true; }
   function unlock() {
     if (!AC) return false;
-    if (!ctx) { ctx = new AC(); master = ctx.createGain(); master.gain.value = vol; master.connect(ctx.destination); }
+    if (!ctx) {
+      ctx = new AC(); master = ctx.createGain(); master.gain.value = vol; master.connect(ctx.destination);
+      // les effets passent par une petite réverbe de pièce : beaucoup plus naturel qu'un son « sec »
+      fxBus = ctx.createGain(); fxBus.connect(master);
+      rev = ctx.createConvolver(); rev.buffer = impulse(2.2, 2.6);
+      const send = ctx.createGain(); send.gain.value = 0.22; fxBus.connect(send); send.connect(rev); rev.connect(master);
+      Object.keys(FX).forEach(loadSample); ['gala', 'tension', 'nuit', 'pluie', 'film'].forEach((a) => loadSample('amb-' + a));
+    }
     if (ctx.state === 'suspended') ctx.resume();
     return true;
   }
@@ -1439,7 +1459,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     o.type = type; o.frequency.setValueAtTime(f, t0);
     if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
     env(g, t0, dur, peak);
-    o.connect(g); g.connect(out || master);
+    o.connect(g); g.connect(out || fxBus || master);
     o.start(t0); o.stop(t0 + dur + 0.05);
   }
   function noise(t0, dur, peak, ftype, freq, q = 1, out) {
@@ -1447,39 +1467,59 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     s.buffer = noiseBuffer(); s.loop = true;
     f.type = ftype; f.frequency.value = freq; f.Q.value = q;
     env(g, t0, dur, peak, Math.min(0.02, dur / 3));
-    s.connect(f); f.connect(g); g.connect(out || master);
+    s.connect(f); f.connect(g); g.connect(out || fxBus || master);
     s.start(t0, Math.random()); s.stop(t0 + dur + 0.05);
   }
 
   /* ----- effets ----- */
   const FX = {
-    alarm() { const t = T(), o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'square'; g.gain.value = 0.13; o.connect(g); g.connect(master);
-      for (let i = 0; i < 12; i++) o.frequency.setValueAtTime(i % 2 ? 660 : 920, t + i * 0.3);
-      g.gain.setValueAtTime(0.13, t + 3.4); g.gain.linearRampToValueAtTime(0.0001, t + 3.7); o.start(t); o.stop(t + 3.7); },
-    siren() { const t = T(), o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(); o.type = 'sawtooth'; f.type = 'lowpass'; f.frequency.value = 2200; g.gain.value = 0.14;
-      o.connect(f); f.connect(g); g.connect(master);
-      for (let i = 0; i < 5; i++) { o.frequency.setValueAtTime(650, t + i * 1.4); o.frequency.linearRampToValueAtTime(1050, t + i * 1.4 + 0.7); o.frequency.linearRampToValueAtTime(650, t + i * 1.4 + 1.4); }
-      g.gain.setValueAtTime(0.14, t + 6.4); g.gain.linearRampToValueAtTime(0.0001, t + 7); o.start(t); o.stop(t + 7); },
-    beep() { const t = T(); tone('sine', 1320, t, 0.12, 0.25); tone('sine', 1760, t + 0.14, 0.2, 0.25); },
-    refus() { const t = T(); tone('square', 200, t, 0.18, 0.18); tone('square', 160, t + 0.22, 0.3, 0.18); },
-    steps() { const t = T(); for (let i = 0; i < 7; i++) { noise(t + i * 0.44 + (i % 2) * 0.03, 0.1, 0.5, 'lowpass', 260 + (i % 2) * 60, 1); tone('sine', 85, t + i * 0.44, 0.1, 0.25); } },
-    blackout() { const t = T(); tone('sawtooth', 320, t, 1, 0.25, 38); noise(t, 0.4, 0.4, 'lowpass', 140, 1); tone('sine', 50, t + 0.05, 0.9, 0.5); noise(t + 1.1, 1.4, 0.05, 'bandpass', 120, 8); },
-    vault() { const t = T(); tone('sine', 62, t, 0.9, 0.6, 34); noise(t + 0.05, 0.18, 0.4, 'bandpass', 3200, 8); noise(t + 0.4, 1.3, 0.14, 'highpass', 5500, 0.7); tone('sine', 55, t + 1, 0.7, 0.5, 30); noise(t + 1.02, 0.15, 0.3, 'bandpass', 2200, 6); },
-    gong() { const t = T(); [1, 2.76, 5.4, 8.93].forEach((m, i) => tone('sine', 170 * m, t, 3.6 - i * 0.5, 0.28 / (i + 1))); noise(t, 0.12, 0.2, 'bandpass', 900, 2); },
+    // sonnerie d'alarme de banque : cloche électrique, marteau qui frappe ~20 fois par seconde
+    alarm() { const t = T(), dur = 4, bus = ctx.createGain(); bus.gain.value = 0.5; bus.connect(fxBus);
+      const am = ctx.createGain(); am.gain.value = 0; am.connect(bus);
+      [[1180, 0.32], [2470, 0.22], [3560, 0.14], [4830, 0.07]].forEach(([f, a]) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; g.gain.value = a; o.connect(g); g.connect(am); o.start(t); o.stop(t + dur); });
+      for (let k = 0; k < dur * 21; k++) { const x = t + k / 21; am.gain.setValueAtTime(1, x); am.gain.exponentialRampToValueAtTime(0.15, x + 0.04); }
+      am.gain.setValueAtTime(0.15, t + dur - 0.05); am.gain.linearRampToValueAtTime(0, t + dur);
+      for (let k = 0; k < dur * 21; k++) noise(t + k / 21, 0.012, 0.18, 'highpass', 4000, 0.7, bus); },
+    // sirène de police française « pin-pon » qui approche puis s'éloigne
+    siren() { const t = T(), dur = 7.5, o = ctx.createOscillator(), o2 = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), sh = ctx.createWaveShaper();
+      const cv = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; cv[i] = Math.tanh(2.5 * x); } sh.curve = cv;
+      o.type = 'square'; o2.type = 'square'; f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 0.8;
+      o.connect(sh); o2.connect(sh); sh.connect(f); f.connect(g); g.connect(fxBus);
+      for (let k = 0; k * 0.6 < dur; k++) { const x = t + k * 0.6, dop = 1 + 0.03 * Math.cos(Math.PI * k * 0.6 / dur); const hi = k % 2 === 0; o.frequency.setValueAtTime((hi ? 435 : 580) * dop, x); o2.frequency.setValueAtTime((hi ? 435 : 580) * dop * 1.004, x); }
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + dur * 0.45); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.start(t); o2.start(t); o.stop(t + dur); o2.stop(t + dur); },
+    // lecteur de badge : bip court et franc
+    beep() { const t = T(); tone('sine', 2730, t, 0.11, 0.22); tone('sine', 2730, t + 0.16, 0.11, 0.22); noise(t, 0.01, 0.1, 'highpass', 5000, 1); },
+    refus() { const t = T(); [0, 0.24].forEach((d) => { tone('square', 380, t + d, 0.18, 0.08); tone('sawtooth', 190, t + d, 0.18, 0.08); }); },
+    // pas sur un sol en pierre : talon puis pointe, rythme irrégulier
+    steps() { const t = T(); let x = 0; for (let i = 0; i < 8; i++) { const v = 0.5 + Math.random() * 0.25; noise(t + x, 0.035, 0.55 * v, 'lowpass', 700, 0.8); tone('sine', 95, t + x, 0.06, 0.3 * v, 60); noise(t + x + 0.07, 0.025, 0.28 * v, 'bandpass', 1800, 1.2); x += 0.48 + Math.random() * 0.12; } },
+    // coupure de courant : bourdonnement du secteur qui s'effondre + relais
+    blackout() { const t = T(); noise(t, 0.05, 0.6, 'bandpass', 1500, 1); tone('square', 600, t, 0.03, 0.15); [50, 100, 150].forEach((f, i) => tone('sawtooth', f, t, 1.4, 0.12 / (i + 1), f * 0.35)); noise(t + 0.02, 1.2, 0.08, 'lowpass', 300, 0.7); tone('sine', 40, t + 0.05, 1, 0.4, 25); },
+    // porte de chambre forte : gros verrous métalliques, résonance de l'acier, sifflement hydraulique
+    vault() { const t = T(); [0, 0.35, 0.7].forEach((d, k) => { noise(t + d, 0.04, 0.5, 'bandpass', 2400 - k * 300, 3); [180, 437, 811, 1291].forEach((f, j) => tone('sine', f * (1 - k * 0.02), t + d, 0.6 - j * 0.1, 0.18 / (j + 1))); });
+      noise(t + 1.1, 2.2, 0.1, 'highpass', 3000, 0.5); [62, 97, 143, 221].forEach((f, j) => tone('sine', f, t + 1.4, 2.4 - j * 0.4, 0.35 / (j + 1), f * 0.92)); noise(t + 1.4, 0.3, 0.45, 'lowpass', 250, 1); },
+    // cloche d'église à 6h00 : partiels de cloche (bourdon, fondamentale, tierce mineure, quinte, octave)
+    gong() { const t = T(), f = 196; [[0.5, 0.35, 7], [1, 0.4, 5], [1.19, 0.25, 4], [1.5, 0.18, 3.2], [2, 0.2, 2.6], [2.52, 0.1, 2], [3.01, 0.07, 1.5]].forEach(([m, a, d]) => tone('sine', f * m * (1 + (Math.random() - 0.5) * 0.002), t, d, a)); noise(t, 0.05, 0.3, 'bandpass', 2500, 2); },
     success() { const t = T(); [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, t + i * 0.1, 0.45, 0.22)); },
     fail() { const t = T(); [392, 330, 262].forEach((f, i) => tone('sawtooth', f, t + i * 0.2, 0.4, 0.12)); },
-    talkie() { const t = T(); noise(t, 0.12, 0.25, 'bandpass', 1700, 2); tone('sine', 1000, t + 0.14, 0.08, 0.15); noise(t + 0.35, 0.5, 0.18, 'bandpass', 1500, 2); noise(t + 0.95, 0.1, 0.25, 'bandpass', 1700, 2); },
+    // talkie-walkie : souffle radio, grésillement, « roger beep »
+    talkie() { const t = T(), bus = ctx.createGain(), sh = ctx.createWaveShaper(), cv = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; cv[i] = Math.sign(x) * Math.pow(Math.abs(x), 0.4); } sh.curve = cv; bus.connect(sh); sh.connect(fxBus); bus.gain.value = 0.6;
+      noise(t, 0.08, 0.5, 'bandpass', 1800, 1.5, bus); noise(t + 0.08, 1.1, 0.09, 'bandpass', 1400, 0.9, bus);
+      for (let k = 0; k < 9; k++) noise(t + 0.15 + k * 0.1 + Math.random() * 0.05, 0.05, 0.18 + Math.random() * 0.12, 'bandpass', 700 + Math.random() * 900, 4, bus);
+      tone('sine', 1250, t + 1.22, 0.07, 0.12, null, bus); noise(t + 1.3, 0.12, 0.45, 'bandpass', 1800, 1.5, bus); },
     coeur() { const t = T(); for (let i = 0; i < 4; i++) { tone('sine', 70, t + i * 0.95, 0.18, 0.7, 40); tone('sine', 60, t + i * 0.95 + 0.22, 0.2, 0.5, 36); } },
     ping() { const t = T(); tone('sine', 880, t, 0.35, 0.22); tone('sine', 1320, t + 0.02, 0.3, 0.1); },
-    dice() { const t = T(); let x = 0, gap = 0.13; for (let i = 0; i < 14; i++) { noise(t + x, 0.05, 0.22, 'bandpass', 1500 + Math.random() * 1500, 3); tone('triangle', 500 + Math.random() * 300, t + x, 0.04, 0.05); x += gap; gap = Math.max(0.05, gap * 0.9); }
-      tone('sine', 120, t + 1.15, 0.2, 0.45, 70); },
+    // dé qui roule sur une table en bois : chocs de plus en plus rapprochés puis immobilisation
+    dice() { const t = T(); let x = 0, gap = 0.16; for (let i = 0; i < 13; i++) { const v = Math.max(0.15, 1 - i * 0.06); noise(t + x, 0.018, 0.35 * v, 'bandpass', 2800 + Math.random() * 1800, 2.5); tone('triangle', 900 + Math.random() * 500, t + x, 0.03, 0.05 * v); tone('sine', 180, t + x, 0.05, 0.12 * v); x += gap; gap = Math.max(0.035, gap * 0.82); } noise(t + x, 0.06, 0.12, 'bandpass', 2000, 2); },
     /* --- pour l'intro --- */
     whoosh() { const t = T(), s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(); s.buffer = noiseBuffer(); f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(4000, t + 0.45); f.frequency.exponentialRampToValueAtTime(800, t + 0.8); env(g, t, 0.85, 0.5, 0.25); s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + 0.9); },
     boom() { const t = T(); tone('sine', 90, t, 1.6, 0.9, 28); tone('triangle', 55, t, 1.2, 0.5, 30); noise(t, 0.35, 0.6, 'lowpass', 400, 1); noise(t + 0.02, 1.4, 0.12, 'lowpass', 160, 1); },
     riser() { const t = T(), o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(880, t + 2.6); f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(5000, t + 2.6); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 2.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8); o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + 2.9); noise(t, 2.7, 0.08, 'highpass', 3000, 0.7); },
     tick() { const t = T(); tone('square', 2400, t, 0.03, 0.12); noise(t, 0.03, 0.15, 'highpass', 5000, 1); },
-    type() { const t = T(); noise(t, 0.025, 0.35, 'bandpass', 2500 + Math.random() * 1500, 4); tone('square', 180, t, 0.02, 0.05); },
-    thunder() { const t = T(); noise(t, 0.08, 0.8, 'highpass', 1500, 0.7); noise(t + 0.05, 3.2, 0.5, 'lowpass', 220, 0.8); tone('sine', 45, t + 0.1, 2.5, 0.5, 30); },
+    type() { const t = T(); noise(t, 0.008, 0.45, 'highpass', 3500, 0.8); noise(t + 0.006, 0.03, 0.25, 'bandpass', 1200 + Math.random() * 600, 3); tone('sine', 160, t + 0.004, 0.035, 0.18, 110); },
+    thunder() { const t = T(); noise(t, 0.12, 0.9, 'highpass', 1200, 0.6); noise(t + 0.02, 0.4, 0.6, 'bandpass', 600, 0.6);
+      for (let k = 0; k < 6; k++) { const d = 0.15 + k * 0.45 + Math.random() * 0.3; noise(t + d, 1.2 + Math.random(), 0.35 - k * 0.04, 'lowpass', 160 + Math.random() * 120, 0.8); }
+      tone('sine', 38, t + 0.1, 3.8, 0.45, 28); },
     stinger() { const t = T(); [65.4, 98, 130.8, 155.6].forEach((f, i) => tone('sawtooth', f, t, 3.2, 0.09 / (i * 0.5 + 1))); tone('sine', 65.4, t, 3, 0.5, 40); noise(t, 0.4, 0.4, 'lowpass', 900, 1); },
   };
   const NAMES = { alarm: 'Alarme', siren: 'Sirène de police', beep: 'Badge accepté', refus: 'Badge refusé', steps: 'Pas dans l\'escalier', blackout: 'Coupure de courant', vault: 'Chambre forte', gong: 'Cloche de 6h00', success: 'Réussite', fail: 'Échec', talkie: 'Talkie des gardes', coeur: 'Battements de cœur', ping: 'Repère', dice: 'Dé qui roule', whoosh: 'Souffle', boom: 'Impact', riser: 'Montée', tick: 'Tic', type: 'Machine à écrire', thunder: 'Tonnerre', stinger: 'Générique' };
@@ -1491,7 +1531,16 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const nodes = [], timers = [];
     const src = (type, f, peak, dest) => { const o = ctx.createOscillator(), og = ctx.createGain(); o.type = type; o.frequency.value = f; og.gain.value = peak; o.connect(og); og.connect(dest || g); o.start(); nodes.push(o); return { o, og }; };
     const hiss = (ftype, freq, peak, q = 1) => { const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), sg = ctx.createGain(); s.buffer = noiseBuffer(); s.loop = true; f.type = ftype; f.frequency.value = freq; f.Q.value = q; sg.gain.value = peak; s.connect(f); f.connect(sg); sg.connect(g); s.start(); nodes.push(s); return f; };
-    if (id === 'gala') {
+    const smp = SAMPLES['amb-' + id];
+    if (smp) { const b = ctx.createBufferSource(); b.buffer = smp; b.loop = true; b.connect(g); b.start(); nodes.push(b); }
+    else if (id === 'gala') {
+      // murmure de foule : plusieurs « voix » de bruit filtré, modulées au rythme des syllabes, et des verres qui tintent
+      for (let k = 0; k < 7; k++) { const f = hiss('bandpass', 380 + Math.random() * 900, 0, 2.5); const vg = ctx.createGain(); vg.gain.value = 0; const n = f; /* filtre déjà relié */
+        const lf = ctx.createOscillator(), lg = ctx.createGain(); lf.frequency.value = 3 + Math.random() * 3; lg.gain.value = 0.012; lf.connect(lg); lf.start(); nodes.push(lf);
+        const off = ctx.createConstantSource ? ctx.createConstantSource() : null; if (off) { off.offset.value = 0.012; off.start(); nodes.push(off); }
+        n.disconnect(); n.connect(vg); vg.connect(g); lg.connect(vg.gain); if (off) off.connect(vg.gain); }
+      const clink = () => { const t = T() + Math.random() * 2; [2900, 4100, 6300].forEach((f, i) => tone('sine', f * (1 + Math.random() * 0.05), t, 0.9 - i * 0.2, 0.025 / (i + 1), null, g)); };
+      timers.push(setInterval(() => { if (Math.random() < 0.6) clink(); }, 2600));
       const CH = [[110, 220, 261.6, 329.6, 392], [146.8, 220, 261.6, 349.2, 440], [98, 196, 246.9, 293.7, 349.2], [130.8, 196, 261.6, 329.6, 392]];
       let i = 0;
       const chord = () => {
@@ -1557,7 +1606,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   }
   function duck(level) { if (!amb || !ctx) return; const t = T(); amb.g.gain.cancelScheduledValues(t); amb.g.gain.setTargetAtTime(Math.max(0.0001, level), t, 0.25); }
   function setVolume(v) { vol = Math.max(0, Math.min(1, +v || 0)); if (master) master.gain.setTargetAtTime(vol, ctx.currentTime, 0.05); }
-  function play(id) { if (!on() || !FX[id]) return false; FX[id](); return true; }
+  function play(id) { if (!on() || !FX[id]) return false; if (!playSample(id)) FX[id](); return true; }
 
   window.ValmontSound = { unlock, play, ambience, duck, setVolume, isOn: on, names: NAMES, pending: () => ambId };
 })();
