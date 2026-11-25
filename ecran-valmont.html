@@ -84,6 +84,12 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .log div:first-child span { color: var(--fg); font-weight: 600; }
 .log div span { color: #c4cedb; overflow-wrap: anywhere; }
 .empty { color: var(--muted); font-size: .9rem; }
+.mjnotes { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 60; display: grid; gap: 8px; width: min(680px, 94vw); pointer-events: none; }
+.mjnote { pointer-events: auto; background: #1b2230; border: 2px solid var(--amber); color: #fff; padding: 12px 16px; font-size: 1.05rem; line-height: 1.35; box-shadow: 0 8px 24px rgba(0,0,0,.55); transition: opacity .6s; cursor: pointer; }
+.mjnote b { color: var(--amber); margin-right: 8px; font-family: var(--mono); }
+.mjnote.warn { border-color: var(--red); }
+.mjnote.out { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) { .mjnote { animation: pop .25s ease-out; } }
 .scenefx { position: absolute; inset: 0; z-index: 7; background: #05070b; display: grid; place-items: center; padding: 2vmin; }
 .scenefx .frame { width: min(100%, 177vh); aspect-ratio: 16/9; border: 4px solid #14110f; box-shadow: 0 0 0 3px var(--amber); }
 @media (prefers-reduced-motion: no-preference) { .scenefx .frame { animation: pop .4s ease-out; } }
@@ -292,7 +298,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <form class="row" id="lootForm"><input id="lootAmt" type="number" inputmode="numeric" placeholder="Montant libre (€)" aria-label="Montant libre"><button class="b" type="submit">Ajouter</button></form>
   </div>
 
-  <div class="card"><h3>Lancer un dé</h3>
+  <details class="card"><summary style="cursor:pointer;font-weight:700">Lancer un dé à la place d'un joueur <small class="hint">(les joueurs lancent eux-mêmes dans leur carnet)</small></summary>
     <div class="row">
       <select id="rWho" aria-label="Qui lance"></select>
       <select id="rSkill" aria-label="Compétence"><option value="Muscle">Muscle</option><option value="Discrétion">Discrétion</option><option value="Technique">Technique</option><option value="Baratin">Baratin</option></select>
@@ -303,21 +309,22 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     </div>
     <div class="btns"><button class="b go" id="rollShow">Lancer et afficher</button><button class="b" id="rollSecret">Lancer en secret</button></div>
     <div class="rollout" id="rOut"><span class="hint">Le bonus se remplit avec la compétence du rôle. Ajoute +3 si le joueur dépense 1 énergie.</span></div>
-  </div>
+  </details>
 
-  <div class="card"><h3><span>Sons d'ambiance</span><span id="cSndNow"></span></h3>
+  <details class="card"><summary style="cursor:pointer;font-weight:700">Sons d'ambiance <small class="hint">(automatiques : gala, nuit, tension selon l'heure, le lieu et l'alerte)</small> <span id="cSndNow"></span></summary>
     <p class="hint">Les sons sortent de l'ordi de la télé. Une seule fois, touche « Activer le son » sur l'écran de la télé.</p>
     <div class="btns" id="cAmb"></div>
     <div class="btns" id="cFx"></div>
     <label class="hint" for="cVol" style="display:grid;gap:4px">Volume<input id="cVol" type="range" min="0" max="1" step="0.05" aria-label="Volume des sons"></label>
     <div class="btns"><button class="b sm" id="cAuto" type="button"></button></div>
     <p class="hint">Sons automatiques : le dé qui roule, et l'alarme quand l'alerte atteint 7.</p>
-  </div>
+    <button class="b sm" data-ambauto="1" type="button">Remettre l'automatique</button>
+  </details>
 
   <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
     <div id="cScenes"></div>
     <button class="b red" id="sceneOff">Fermer la scène</button>
-    <p class="hint">Choisis qui joue et la difficulté, touche la situation : l'image « en train » s'affiche. Quand un dé est lancé (par le joueur dans son carnet, ou par toi avec « Lancer un dé »), l'image passe toute seule à « réussite » ou « échec ». Les boutons En cours / Réussi / Raté servent à corriger.</p>
+    <p class="hint">Choisis qui joue et la difficulté, touche la situation : l'image « en train » s'affiche. Le joueur lance son dé dans son carnet : le dé s'affiche sur la télé. Ensuite, soit tu valides l'image (le jet te propose réussite ou échec), soit elle passe toute seule si tu as choisi « Image automatique ».</p>
   </div>
 
   <div class="card"><h3>Annonce plein écran</h3>
@@ -1577,9 +1584,31 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
   /* ---------- automatismes : alerte, horloge, événements ---------- */
   const logAdd = (s, text) => { s.log.unshift({ t: s.t, text: String(text).slice(0, 110) }); s.log = s.log.slice(0, 40); };
-  const feedAdd = (s, text) => { s.feed.unshift({ t: s.t, text: String(text).slice(0, 260) }); s.feed = s.feed.slice(0, 14); };
+  /* petite note en haut de l'écran du MJ : il est telle heure, il se passe ça. Elle reste le temps de la lire, puis disparaît. */
+  function toast(text, t, warn) {
+    if (!isConsole()) return;
+    let box = document.getElementById('mjNotes');
+    if (!box) { box = document.createElement('div'); box.id = 'mjNotes'; box.className = 'mjnotes'; box.setAttribute('aria-live', 'polite'); document.body.appendChild(box); }
+    const n = document.createElement('div');
+    n.className = 'mjnote' + (warn ? ' warn' : '');
+    n.innerHTML = `<b>${hhmm(t)}</b>${esc(text)}`;
+    const close = () => { n.classList.add('out'); setTimeout(() => n.remove(), 650); };
+    n.addEventListener('click', close);
+    box.appendChild(n);
+    while (box.children.length > 4) box.firstChild.remove();
+    setTimeout(close, Math.min(22000, Math.max(9000, 5000 + text.length * 70)));
+  }
+  const feedAdd = (s, text, warn) => { s.feed.unshift({ t: s.t, text: String(text).slice(0, 260) }); s.feed = s.feed.slice(0, 14); toast(String(text).slice(0, 260), s.t, warn); };
+  /* une pièce où l'on entre contient-elle une caméra que les joueurs n'ont pas vue ? */
+  function enterNote(s, m, fl, roomId, roomName) {
+    let cams = [];
+    P.info(fl).camList.forEach((c, i) => { const r = P.roomAt(fl, c.x, c.y); if (r && r.id === roomId && vis('cam', i, fl) === 0) cams.push(i + 1); });
+    feedAdd(s, m.name + ' entre : ' + roomName + (cams.length ? ' · attention, ' + (cams.length > 1 ? 'les caméras ' : 'la caméra ') + cams.join(', ') + ' ' + (cams.length > 1 ? 'ne sont pas révélées' : 'n\'est pas révélée') + ' (ils sont filmés)' : ''), cams.length > 0);
+  }
+  const autoAmb = (s) => (s.alert >= 6 ? 'tension' : s.floor === 'toit' || s.floor === 'sous-sol' ? 'nuit' : s.t < 240 ? 'gala' : 'nuit');
   // quand l'alerte monte : on repart de zéro pour « le calme revient » ; aux paliers 7 et 10 : annonce et journal
   function afterAlert() {
+    if (isConsole() && !(state.au && state.au.ambAuto === false)) { const a = autoAmb(state); if (a !== state.amb) state.amb = a; }
     const before = state._la || 0, now = state.alert;
     if (now > before) state.calmAt = state.t;
     state._la = now;
@@ -1590,7 +1619,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   }
   let bannerTimer = null;
   function announce(text, sound, log) {
-    commit((s) => { s.banner = { on: true, text }; if (sound) s.snd = { id: sound, at: Date.now() }; if (log) logAdd(s, log); });
+    commit((s) => { s.banner = { on: true, text }; if (sound) s.snd = { id: sound, at: Date.now() }; if (log) { logAdd(s, log); feedAdd(s, log, true); } });
     clearTimeout(bannerTimer);
     bannerTimer = setTimeout(() => commit((s) => { if (s.banner.text === text) s.banner = { on: false, text }; }), 7000);
   }
@@ -1647,14 +1676,20 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     m.floor = rq.floor; m.room = ''; m.x = Math.round(rr.x + rr.w / 2 + (Math.random() * 50 - 25)); m.y = Math.round(rr.y + rr.h / 2 + 14 + Math.random() * 14);
     s.seen[`${rq.floor}|${rq.room}`] = true; s.floor = rq.floor;
     logAdd(s, m.name + ' entre : ' + rr.name);
+    enterNote(s, m, rq.floor, rq.room, rr.name);
   }
   /* un jet pendant qu'une scène « en train » est à l'écran : la télé affiche réussite ou échec toute seule */
   function sceneJudge(s, d20, total, dd) {
     if (!(s.scene && s.scene.on && s.scene.st === 'action')) return;
     const used = dd || 12, win = d20 === 20 ? true : d20 === 1 ? false : total >= used, at0 = s.scene.at, st = win ? 'ok' : 'ko';
     s.scene.wait = false;
-    feedAdd(s, 'Scène : ' + (win ? 'réussite' : 'échec') + ' affichée sur la télé dans quelques secondes' + (dd ? '.' : ' (difficulté 12 par défaut).'));
-    setTimeout(() => commit((x) => { if (x.scene && x.scene.on && x.scene.at === at0) sceneResult(x, st); }), 4200);
+    if (s.au && s.au.sceneAuto) {
+      feedAdd(s, 'Scène : ' + (win ? 'réussite' : 'échec') + ' affichée sur la télé dans quelques secondes' + (dd ? '.' : ' (difficulté 12 par défaut).'));
+      setTimeout(() => commit((x) => { if (x.scene && x.scene.on && x.scene.at === at0) sceneResult(x, st); }), 4200);
+    } else {
+      s.scene.proposal = { st, total, d: d20, dd: used, who: (s.roll && s.roll.who) || '' };
+      feedAdd(s, 'Jet reçu : le dé dit « ' + (win ? 'réussite' : 'échec') + ' ». À toi de valider l\'image dans « Scènes illustrées ».');
+    }
   }
   const HANDLE = {
     b(s, d) { s.board[d.id] = { st: 'run', who: d.who }; },
@@ -1990,7 +2025,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
   let lastScene = '', sceneWho = '', sceneT = null;
   const hideSec = (s) => (s.au && s.au.sceneHide != null ? s.au.sceneHide : 15);
-  function sceneResult(s, st) { s.scene = Object.assign({}, s.scene, { st, wait: false, at: Date.now(), hideAt: st !== 'action' && hideSec(s) ? Date.now() + hideSec(s) * 1000 : 0 }); }
+  function sceneResult(s, st) { s.scene = Object.assign({}, s.scene, { st, wait: false, proposal: null, at: Date.now(), hideAt: st !== 'action' && hideSec(s) ? Date.now() + hideSec(s) * 1000 : 0 }); }
   let confirmDel = null, confirmReset = false;
   function renderSalon() {
     const box = $('cSalon'); if (!box) return;
@@ -2060,6 +2095,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       const sc = s.scene && s.scene.on ? s.scene : null, names = Object.fromEntries(ValmontScenes.situations.map((x) => [x.id, x.name]));
       $('cScenes').innerHTML = `<div class="hint" style="margin:0 0 4px">1. Qui joue</div><div class="seg" style="margin-bottom:8px">${[['', 'Les deux'], ['a', 'Seul · ' + (tn[0] || 'A')], ['b', 'Seul · ' + (tn[1] || 'B')]].map(([k, l]) => `<button class="b sm ${sceneWho === k ? 'on go' : ''}" data-scwho="${k}">${esc(l)}</button>`).join('')}</div>` + `<div class="hint" style="margin:6px 0 4px">2. Difficulté (12 par défaut si tu n'en choisis pas)</div><div class="seg" style="margin-bottom:8px">${[[null, 'Aucune'], [8, '8'], [12, '12'], [15, '15'], [18, '18']].map(([v, l]) => `<button class="b sm ${s.dd === v ? 'on go' : ''}" data-dd="${v}" type="button">${l}</button>`).join('')}</div>`
         + `<div class="hint" style="margin:6px 0 4px">3. Touche la situation : l'image « en train » apparaît</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:10px">${ValmontScenes.situations.map((x) => `<button class="b sm ${sc && sc.sit === x.id ? 'on go' : ''}" data-scgo="${x.id}" type="button">${esc(x.name)}</button>`).join('')}</div>`
+        + `<div class="hint" style="margin:6px 0 4px">Quand un joueur a lancé son dé</div><div class="seg" style="margin-bottom:8px">${[[0, 'Je valide l\'image'], [1, 'Image automatique']].map(([v, l]) => `<button class="b sm ${(s.au && s.au.sceneAuto ? 1 : 0) === v ? 'on go' : ''}" data-scauto="${v}" type="button">${l}</button>`).join('')}</div>`
+        + (sc && sc.proposal ? `<div class="camrow" style="background:rgba(255,200,60,.12);padding:8px;border:1px solid var(--amber)"><span>Jet de ${esc(sc.proposal.who)} : <b>${sc.proposal.total}</b> contre ${sc.proposal.dd} → <b>${sc.proposal.st === 'ok' ? 'RÉUSSITE' : 'ÉCHEC'}</b></span><span class="seg"><button class="b sm ${sc.proposal.st === 'ok' ? 'go' : ''}" data-scres="ok" type="button">${sc.proposal.st === 'ok' ? '★ ' : ''}Afficher réussite</button><button class="b sm ${sc.proposal.st === 'ko' ? 'red' : ''}" data-scres="ko" type="button">${sc.proposal.st === 'ko' ? '★ ' : ''}Afficher échec</button></span></div>` : '')
         + (sc ? `<div class="camrow"><span><b>${esc(names[sc.sit] || '')}</b> · ${sc.wait ? 'en attente du jet…' : sc.st === 'ok' ? 'réussite' : sc.st === 'ko' ? 'échec' : 'en cours'}</span><span class="seg">${[['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']].map(([k, l]) => `<button class="b sm ${sc.st === k ? 'on go' : ''}" data-scres="${k}" type="button">${l}</button>`).join('')}</span></div>` : '')
         + `<div class="hint" style="margin:8px 0 4px">Retour au plan après le résultat</div><div class="seg">${[[0, 'Jamais'], [8, '8 s'], [15, '15 s'], [30, '30 s']].map(([v, l]) => `<button class="b sm ${hideSec(s) === v ? 'on go' : ''}" data-schide="${v}" type="button">${l}</button>`).join('')}</div>`;
       $('sceneOff').disabled = !(s.scene && s.scene.on);
@@ -2105,7 +2142,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   let drag = null, lastLive = 0;
   function placeMember(id, x, y, final) {
     const fl = state.floor;
-    const apply = (s) => { const m = s.team.find((t) => t.id === id); if (!m) return; const was = m.floor === fl && m.x != null ? P.roomAt(fl, m.x, m.y) : null; m.floor = fl; m.x = Math.round(x); m.y = Math.round(y); m.room = ''; const r = P.roomAt(fl, x, y); if (r && s.fog) s.seen[`${fl}|${r.id}`] = true; if (final && r && (!was || was.id !== r.id)) logAdd(s, m.name + ' entre : ' + r.name); };
+    const apply = (s) => { const m = s.team.find((t) => t.id === id); if (!m) return; const was = m.floor === fl && m.x != null ? P.roomAt(fl, m.x, m.y) : null; m.floor = fl; m.x = Math.round(x); m.y = Math.round(y); m.room = ''; const r = P.roomAt(fl, x, y); if (r && s.fog) s.seen[`${fl}|${r.id}`] = true; if (final && r && (!was || was.id !== r.id)) { logAdd(s, m.name + ' entre : ' + r.name); enterNote(s, m, fl, r.id, r.name); } };
     if (final) commit(apply); else liveCommit(apply);
   }
   function placeGuard(i, x, y, final) {
@@ -2184,7 +2221,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.rq) { const rq = state.req.find((r) => r.id === d.id); return commit((s) => { if (rq && d.rq === 'ok') applyMove(s, rq); s.req = s.req.filter((r) => r.id !== d.id); }); }
     if (d.end) { const s0 = state; const title = s0.alert < 4 && s0.team.every((m) => m.hp > 0) ? 'FANTÔMES DE PORT-SAINTE-CLAIRE' : s0.alert >= 10 ? 'ÉQUIPE ENCERCLÉE' : 'BRAQUAGE TERMINÉ'; return announce(title + ' · ' + euro(s0.loot), s0.alert >= 10 ? 'siren' : 'success', 'Fin de la partie : ' + euro(s0.loot) + ', alerte ' + s0.alert + '.'); }
     if (d.snd) return commit((s) => { s.snd = { id: d.snd, at: Date.now() }; });
-    if (d.amb != null && b.hasAttribute('data-amb')) return commit((s) => { s.amb = d.amb; });
+    if (d.ambauto) return commit((s) => { s.au.ambAuto = true; });
+    if (d.amb != null && b.hasAttribute('data-amb')) return commit((s) => { s.au.ambAuto = false; s.amb = d.amb; });
     if (b.id === 'cAuto') return commit((s) => { s.auto = !s.auto; });
     if (d.bmode) { bmode = d.bmode; return render(); }
     if (d.pick) { selected = selected === d.pick ? null : d.pick; return render(); }
@@ -2194,6 +2232,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.scwho != null) { sceneWho = d.scwho; return render(); }
     if (d.scgo) return commit((s) => { s.scene = { on: true, sit: d.scgo, st: 'action', who: sceneWho, at: Date.now(), wait: true, hideAt: 0 }; });
     if (d.scres) return commit((s) => { if (s.scene && s.scene.on) sceneResult(s, d.scres); });
+    if (d.scauto != null) return commit((s) => { s.au.sceneAuto = d.scauto === '1'; });
     if (d.schide != null) return commit((s) => { s.au.sceneHide = +d.schide; });
     if (d.scene) { const [sit, st] = d.scene.split('|'); return commit((s) => { s.scene = { on: true, sit, st, who: sceneWho, at: Date.now() }; }); }
     if (b.id === 'sceneOff') return commit((s) => { s.scene = null; });
