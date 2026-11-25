@@ -825,6 +825,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
       const boost = S.boost && S.en > 0;
       if (boost) S.en -= 1;
       S.prep.cur = { id: l.id, until: Date.now() + l.sec * 1000, boost };
+      send({ k: 'b', pid: S.pid, who: S.name, id: l.id });
       S.boost = false; S.last = null; save(); return render();
     }
     if (b.id === 'reveal') {
