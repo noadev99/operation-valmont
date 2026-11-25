@@ -463,7 +463,14 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     garde: { action: 'Ne faites pas un bruit…', ok: 'Le garde passe son chemin.', ko: 'Repérés par le garde !' },
     fuite: { action: 'Direction la camionnette…', ok: 'Ils ont filé avec le butin !', ko: 'La police bloque la route !' },
   };
-  const TITLE = { hack: 'Piratage', coffre: 'La chambre forte', garde: 'Face au garde', fuite: 'La fuite' };
+  const TITLE = { crochetage: 'Le crochetage', camera: 'La caméra', hack: 'Piratage', garde: 'Face au garde', badge: 'La porte à badge', escalier: 'L\'escalier', coffre: 'La chambre forte', fuite: 'La fuite' };
+  const GENERIC = {
+    crochetage: { action: 'La serrure résiste…', ok: 'Clic ! La porte s\'ouvre.', ko: 'Le crochet casse dans la serrure !' },
+    camera: { action: 'Plaqués au mur, sous la caméra…', ok: 'La caméra se détourne : ils passent.', ko: 'Le voyant rouge s\'allume : repérés !' },
+    badge: { action: 'Le badge glisse dans le lecteur…', ok: 'Voyant vert : la porte s\'ouvre.', ko: 'Voyant rouge : badge refusé !' },
+    escalier: { action: 'Ils descendent à pas de loup…', ok: 'En bas, devant la porte métallique.', ko: 'Une marche craque : un garde les a entendus !' },
+  };
+  Object.keys(GENERIC).forEach((k) => { CAP[k] = GENERIC[k]; BG[k] = (st) => `<rect width="800" height="450" fill="${st === 'ko' ? '#3a1414' : st === 'ok' ? '#10301c' : '#161a24'}"/>`; FG[k] = () => ''; LAYOUT[k] = [330, 520, 280]; });
   const STAMP = { action: ['EN COURS', '#ffcf5a', '#14110f'], ok: ['RÉUSSI', '#41e08a', '#06240f'], ko: ['RATÉ', '#ff4a4a', '#fff'] };
 
   function svg(sit, st, opts) {
@@ -489,9 +496,11 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   }
   /* image de la scène si elle existe (scenes/<situation>-<état>.jpg|webp|png), sinon le dessin */
   function html(sit, st, opts) {
-    const fb = svg(sit, st, opts), id = 'sc' + Math.random().toString(36).slice(2, 8);
-    window['__' + id] = (el) => { const ex = ['jpg', 'webp', 'png'], i = +el.dataset.i + 1; if (i < ex.length) { el.dataset.i = i; el.src = `scenes/${sit}-${st}.${ex[i]}`; } else { const d = document.createElement('div'); d.style.cssText = 'width:100%;height:100%'; d.innerHTML = fb; el.replaceWith(d); } };
-    return `<img data-i="0" src="scenes/${sit}-${st}.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="window.__${id}(this)">`;
+    const fb = svg(sit, st, opts), id = 'sc' + Math.random().toString(36).slice(2, 8), who = opts && opts.who ? '-' + opts.who : '';
+    const cand = [];
+    (who ? [who, ''] : ['']).forEach((w) => ['jpg', 'webp', 'png'].forEach((e) => cand.push(`scenes/${sit}-${st}${w}.${e}`)));
+    window['__' + id] = (el) => { const i = +el.dataset.i + 1; if (i < cand.length) { el.dataset.i = i; el.src = cand[i]; } else { const d = document.createElement('div'); d.style.cssText = 'width:100%;height:100%'; d.innerHTML = fb; el.replaceWith(d); } };
+    return `<img data-i="0" src="${cand[0]}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="window.__${id}(this)">`;
   }
   window.ValmontScenes = { svg, html, situations: Object.keys(TITLE).map((k) => ({ id: k, name: TITLE[k] })), states: [['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']] };
 })();
@@ -1945,13 +1954,13 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       </div>`).join('') : '<p class="empty">Le MJ ajoute les braqueurs depuis la console.</p>';
     $('loot').textContent = euro(s.loot);
     $('log').innerHTML = s.log.length ? s.log.slice(0, 8).map((l) => `<div><b>${hhmm(l.t)}</b><span>${esc(l.text)}</span></div>`).join('') : '<p class="empty">Les décisions de l\'équipe s\'afficheront ici.</p>';
-    { const sc = s.scene, key = sc && sc.on ? sc.sit + '|' + sc.st + '|' + sc.at : '';
+    { const sc = s.scene, key = sc && sc.on ? sc.sit + '|' + sc.st + '|' + (sc.who || '') + '|' + sc.at : '';
       if (key !== lastScene) {
         lastScene = key;
         const box = $('scenefx');
         if (key && window.ValmontScenes) {
           const nm = (s.team || []).map((m) => m.name);
-          box.innerHTML = `<div class="frame">${location.protocol === 'file:' || /claude\.ai|claudeusercontent/.test(location.host) ? ValmontScenes.svg(sc.sit, sc.st, { names: nm }) : ValmontScenes.html(sc.sit, sc.st, { names: nm })}</div>`; box.hidden = false;
+          box.innerHTML = `<div class="frame">${location.protocol === 'file:' || /claude\.ai|claudeusercontent/.test(location.host) ? ValmontScenes.svg(sc.sit, sc.st, { names: nm }) : ValmontScenes.html(sc.sit, sc.st, { names: nm, who: sc.who || '' })}</div>`; box.hidden = false;
           if (!isConsole() && lastScene !== null) { try { ValmontSound.play(sc.st === 'ok' ? 'success' : sc.st === 'ko' ? 'fail' : 'beep'); } catch (e) {} }
         } else box.hidden = true;
       } }
@@ -1969,7 +1978,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     } else if (lastRollAt === null) lastRollAt = s.roll ? s.roll.at : 0;
   }
 
-  let lastScene = '';
+  let lastScene = '', sceneWho = '';
   let confirmDel = null, confirmReset = false;
   function renderSalon() {
     const box = $('cSalon'); if (!box) return;
@@ -2037,7 +2046,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     $('quickBanner').innerHTML = QUICK_BANNER.map((q) => `<button class="b sm ${s.banner.on && s.banner.text === q ? 'on' : ''}" data-banner="${esc(q)}">${esc(q)}</button>`).join('');
     $('bannerOff').disabled = !s.banner.on;
     if ($('cScenes') && window.ValmontScenes) {
-      $('cScenes').innerHTML = ValmontScenes.situations.map((x) => `<div class="camrow"><span>${esc(x.name)}</span><span class="seg">${ValmontScenes.states.map(([k, l]) => `<button class="b sm ${s.scene && s.scene.on && s.scene.sit === x.id && s.scene.st === k ? 'on go' : ''}" data-scene="${x.id}|${k}">${l}</button>`).join('')}</span></div>`).join('');
+      const tn = (s.team || []).map((m) => m.name);
+      $('cScenes').innerHTML = `<div class="seg" style="margin-bottom:8px">${[['', 'Les deux'], ['a', 'Seul · ' + (tn[0] || 'A')], ['b', 'Seul · ' + (tn[1] || 'B')]].map(([k, l]) => `<button class="b sm ${sceneWho === k ? 'on go' : ''}" data-scwho="${k}">${esc(l)}</button>`).join('')}</div>` + ValmontScenes.situations.map((x) => `<div class="camrow"><span>${esc(x.name)}</span><span class="seg">${ValmontScenes.states.map(([k, l]) => `<button class="b sm ${s.scene && s.scene.on && s.scene.sit === x.id && s.scene.st === k ? 'on go' : ''}" data-scene="${x.id}|${k}">${l}</button>`).join('')}</span></div>`).join('');
       $('sceneOff').disabled = !(s.scene && s.scene.on);
     }
     $('resetBtn').textContent = confirmReset ? 'Toucher encore pour confirmer' : 'Nouvelle partie';
@@ -2167,7 +2177,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.zoom) { zoom = !zoom; return render(); }
     if (d.fog) return commit((s) => { s.fog = !s.fog; });
     if (d.out) { const id = selected; selected = null; return commit((s) => { const m = s.team.find((t) => t.id === id); if (m) { m.floor = ''; m.x = null; m.y = null; m.room = ''; } }); }
-    if (d.scene) { const [sit, st] = d.scene.split('|'); return commit((s) => { s.scene = { on: true, sit, st, at: Date.now() }; }); }
+    if (d.scwho != null) { sceneWho = d.scwho; return render(); }
+    if (d.scene) { const [sit, st] = d.scene.split('|'); return commit((s) => { s.scene = { on: true, sit, st, who: sceneWho, at: Date.now() }; }); }
     if (b.id === 'sceneOff') return commit((s) => { s.scene = null; });
     if (d.camset) { const [i, n] = d.camset.split('|'); return commit((s) => { s.vis[`${s.floor}|cam|${i}`] = +n; if (+n === 2) logAdd(s, 'Une caméra est coupée.'); }); }
     if (d.all) {
