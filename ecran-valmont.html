@@ -189,6 +189,14 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 .hint { color: var(--muted); font-size: .85rem; margin: 0; }
 .console { max-width: 820px; }
 .ccols { display: grid; gap: 14px; }
+.roomnotes summary { cursor: pointer; font: 600 .74rem var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 10px; }
+.roomnotes .rn { border-top: 1px solid var(--line); padding: 8px 0; }
+.roomnotes .rn b { font: 700 .9rem var(--body); color: var(--fg); }
+.roomnotes .rn b span { color: var(--green); font-size: .8rem; }
+.roomnotes .rn b i { color: var(--muted); font-weight: 400; font-size: .8rem; }
+.roomnotes .rn.here { background: rgba(65,224,138,.07); padding-left: 8px; border-left: 3px solid var(--green); }
+.roomnotes .rn p { margin: 4px 0 0; color: var(--muted); font-size: .88rem; line-height: 1.45; }
+.roomnotes .rn p b { color: var(--amber); font-size: inherit; }
 .ccol { display: grid; gap: 14px; align-content: start; min-width: 0; }
 /* grand écran : tableau de bord sur toute la largeur, trois colonnes qui défilent chacune de leur côté */
 @media (min-width: 1200px) {
@@ -267,6 +275,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <div class="btns" id="cReveal"></div>
     <h3 style="margin-top:14px"><span>Caméras de cet étage</span><small class="hint">une par une</small></h3>
     <div id="cCamList"></div>
+    <details class="roomnotes" open><summary>Ce que contient chaque pièce de cet étage <small class="hint">(toi seul)</small></summary><div id="cRoomNotes"></div></details>
   </div>
   <div class="card"><h3><span>L'équipe</span><span id="cTeamCount"></span></h3>
     <div id="cTeam"></div>
@@ -1314,6 +1323,42 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
 </script>
 <script>
+/* Ce que contient chaque pièce de la banque (notes secrètes du MJ). Utilisé par le dossier MJ et la console. */
+(function () {
+  window.ValmontNotes = {
+    S1:"Porte blindée de 20 tonnes : code à 8 chiffres + empreinte d'Hélène, ou perceuse thermique (3 réussites en Technique DD 15, alerte +1 par jet raté). S'ouvre seule à 6h00. <b>40 lingots</b> sur 6 palettes (50 000 € pièce) et 120 casiers (Technique DD 12 chacun). Le <b>casier 117</b> a une étiquette rouge : la clé USB. Alarme silencieuse si on ouvre sans le code (désactivable depuis F4). 1 caméra grand angle.",
+    S2:"Grille de lasers devant la porte blindée. Traverser : <b>Discrétion DD 18</b> (lunettes thermiques +3). Couper le courant en S4 éteint les lasers 3 tours. Toucher un laser : alerte +3 et la porte du sas se verrouille.",
+    S3:"Parking, 4 piliers, 2 voitures de service et l'emplacement du fourgon. Rideau métallique sur la rampe : Muscle DD 15, ou télécommande du PC sécurité (R6). <b>Lucas</b> fait sa ronde en somnolant : Discrétion DD 10 pour passer.",
+    S4:"Armoires électriques et transformateur. Couper le courant : Technique DD 12. Caméras et lasers coupés 3 tours, puis le groupe électrogène prend le relais. Alerte +1.",
+    S5:"Rayonnages d'archives. Fouiller 1 tour (Technique DD 12) : plan des conduits (révèle la gaine du toit) ou le dossier des dettes de Paul Ferrand.",
+    S6:"<b>Didier et Yasmine</b> jouent aux cartes. Râtelier, trousseau du sous-sol, radio. Si on les neutralise sans bruit, le sous-sol est libre jusqu'à la ronde de 2h00.",
+    S7:"Deux chaudières, très bruyantes : +2 en Discrétion ici. Grille d'égout scellée (Muscle DD 14 ou perceuse). La gaine de ventilation du toit arrive ici.",
+    R1:"Guichets en marbre, file d'attente, banque d'accueil, distributeurs. Verrière à 12 m au-dessus. <b>Nadia</b> fait le tour du hall, 3 caméras. Porte tambour : la forcer = alerte +3.",
+    R2:"Bureau de Paul Ferrand. Il connaît les <b>4 derniers chiffres</b>. Dans le tiroir : ses reconnaissances de dettes (Baratin +3 contre lui).",
+    R3:"Quatre postes de conseillers. Ordinateurs reliés au réseau (Technique DD 14) : horaires des rondes et position des gardes.",
+    R4:"Casiers du personnel avec uniformes d'entretien et de gardes (Technique DD 8). Déguisement : +3 en Baratin face aux PNJ qui ne vous connaissent pas.",
+    R5:"Table de comptage, machine à billets. <b>180 000 €</b> en 6 sacs, porte à badge, 1 caméra. Un sac sur trois contient une cartouche d'encre.",
+    R6:"Mur d'écrans, contrôle des portes et du rideau du quai. <b>Fabrice</b> est de garde, le poste est vide pendant la relève de 00h30. Prendre le PC : les caméras ne font plus monter l'alerte et toutes les portes s'ouvrent.",
+    R7:"Couloir de service, chariots du traiteur. Porte sur la ruelle (serrure + badge, Technique DD 13). Elle reste ouverte pendant la livraison de 21h à 22h.",
+    F1:"Le gala : <b>60 invités</b>, quatuor sur la scène, buffet, 2 agents privés qui tournent autour du vide sur le hall. Avec costume et invitation, on circule sans jet.",
+    F2:"Open space plongé dans le noir. Sous un clavier, un post-it avec le mot de passe du PC sécurité (fouille DD 12). 1 caméra.",
+    F3:"Bar en L et salon. Barman bavard (Baratin DD 10) : il sait qui est où. Paul Ferrand y boit dès 23h. Bon endroit pour une diversion.",
+    F4:"Trois baies de serveurs, porte à badge, 1 caméra. Piratage (Technique DD 15) : désactive l'<b>alarme silencieuse</b> de la chambre forte, ou met toutes les caméras en boucle 30 minutes.",
+    F5:"Cuisine du traiteur : plans de travail, îlot, chariots à nappe longue (on y cache un sac ou une personne).",
+    F6:"Table de réunion pour 8, vide ce soir. Fenêtres sur la façade nord : grappin vers le toit (Muscle DD 12).",
+    F7:"Bureau d'Hélène. Le tableau au mur cache le coffre (Technique DD 15, lampe UV +3) : <b>4 premiers chiffres</b> du code + le collier à 80 000 €. Hélène y monte seule à 23h20.",
+    T1:"Verrière à montants métalliques, 12 m au-dessus du hall. Découper un panneau (ventouse, Discrétion DD 12) puis descente en rappel (DD 13). Visible du gala : lance 1d6, sur 1 un invité lève la tête.",
+    T2:"Cabanon de l'escalier. Porte avec alarme de contact : Technique DD 12, sinon alerte +2. 1 caméra tournée vers le toit.",
+    T3:"Trois groupes de climatisation, bruit constant. Excellente cachette, sauf pendant la ronde de 2h00.",
+    T4:"Gaine de ventilation : une personne à la fois, sans sac plein. Descend jusqu'à la chaufferie (S7) : Discrétion DD 13 par étage, 3 jets. Échec : coincé 1 tour, −1 PV.",
+    T5:"Antenne relais et parabole. Brouiller les communications (Technique DD 14) : les gardes n'ont plus de radio pendant 20 minutes.",
+    T6:"Le toit voisin est 3 m plus haut, à 6 m. Tyrolienne, ou saut (Muscle DD 16 ; échec : 3 PV et alerte +1).",
+    T7:"Échelle de secours rouillée, façade ouest. Relie la ruelle au toit. Discrétion DD 13, sinon elle grince (alerte +1). <b>Jo</b> fume sa cigarette près du cabanon toutes les 30 minutes."
+  };
+})();
+
+</script>
+<script>
 /* Dé à 20 faces animé, avec le détail du calcul.
    ValmontDice.create(el, { d, mods: [{label, v}], dd, who, title, size })  → joue l'animation dans el
    ValmontDice.overlay(opts, onClose)                                     → même chose en fenêtre plein écran
@@ -1993,12 +2038,13 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     while (box.children.length > 4) box.firstChild.remove();
     setTimeout(close, Math.min(22000, Math.max(9000, 5000 + text.length * 70)));
   }
-  const feedAdd = (s, text, warn) => { s.feed.unshift({ t: s.t, text: String(text).slice(0, 260) }); s.feed = s.feed.slice(0, 14); toast(String(text).slice(0, 260), s.t, warn); };
+  const feedAdd = (s, text, warn) => { s.feed.unshift({ t: s.t, text: String(text).slice(0, 520) }); s.feed = s.feed.slice(0, 14); toast(String(text).slice(0, 520), s.t, warn); };
   /* une pièce où l'on entre contient-elle une caméra que les joueurs n'ont pas vue ? */
   function enterNote(s, m, fl, roomId, roomName) {
     let cams = [];
     P.info(fl).camList.forEach((c, i) => { const r = P.roomAt(fl, c.x, c.y); if (r && r.id === roomId && vis('cam', i, fl) === 0) cams.push(i + 1); });
-    feedAdd(s, m.name + ' entre : ' + roomName + (cams.length ? ' · attention, ' + (cams.length > 1 ? 'les caméras ' : 'la caméra ') + cams.join(', ') + ' ' + (cams.length > 1 ? 'ne sont pas révélées' : 'n\'est pas révélée') + ' (ils sont filmés)' : ''), cams.length > 0);
+    const note = ((window.ValmontNotes || {})[roomId] || '').replace(/<[^>]+>/g, '');
+    feedAdd(s, m.name + ' entre : ' + roomName + (note ? ' — ' + note : '') + (cams.length ? ' · attention, ' + (cams.length > 1 ? 'les caméras ' : 'la caméra ') + cams.join(', ') + ' ' + (cams.length > 1 ? 'ne sont pas révélées' : 'n\'est pas révélée') + ' (ils sont filmés)' : ''), cams.length > 0);
   }
   const autoAmb = (s) => (s.alert >= 6 ? 'tension' : s.floor === 'toit' || s.floor === 'sous-sol' ? 'nuit' : s.t < 240 ? 'gala' : 'nuit');
   // quand l'alerte monte : on repart de zéro pour « le calme revient » ; aux paliers 7 et 10 : annonce et journal
@@ -2526,6 +2572,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     box.innerHTML = P.svg(s.floor, planOpts(s.floor, true));
     $('cModeHint').textContent = HINTS[bmode];
     const info = P.info(s.floor);
+    { const N = window.ValmontNotes || {}, here = new Set(s.team.filter((m) => m.floor === s.floor && m.x != null).map((m) => { const r = P.roomAt(s.floor, m.x, m.y); return r ? r.id : ''; }));
+      $('cRoomNotes').innerHTML = info.rooms.filter((r) => N[r.id]).map((r) => `<div class="rn ${here.has(r.id) ? 'here' : ''}"><b>${r.id} · ${esc(r.name)}${here.has(r.id) ? ' <span>● équipe ici</span>' : ''}${s.seen[s.floor + '|' + r.id] ? '' : ' <i>(pas encore découverte)</i>'}</b><p>${N[r.id]}</p></div>`).join(''); }
     $('cCamList').innerHTML = info.camList.map((c, i) => { const v = vis('cam', i, s.floor), rm = P.roomAt(s.floor, c.x, c.y); return `<div class="camrow"><span>Caméra ${i + 1} · ${esc(rm ? rm.name : 'extérieur')}</span><span class="seg">${[['Cachée', 0], ['Visible', 1], ['Coupée', 2]].map(([l, n]) => `<button class="b sm ${v === n ? 'on go' : ''}" data-camset="${i}|${n}">${l}</button>`).join('')}</span></div>`; }).join('');
     $('cReveal').innerHTML = [
       `<button class="b sm" data-all="cam|1">Montrer les caméras</button>`, `<button class="b sm" data-all="cam|0">Cacher les caméras</button>`,
