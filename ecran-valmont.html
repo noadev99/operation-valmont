@@ -305,12 +305,6 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <div class="rollout" id="rOut"><span class="hint">Le bonus se remplit avec la compétence du rôle. Ajoute +3 si le joueur dépense 1 énergie.</span></div>
   </div>
 
-  <div class="card"><h3>Journal des décisions</h3>
-    <form class="row" id="logForm" autocomplete="off"><input id="logText" maxlength="110" placeholder="Ex. : Noa assomme le garde du quai" aria-label="Nouvelle entrée du journal"><button class="b go" type="submit">Noter</button></form>
-    <div class="btns" id="quickLog"></div>
-    <div class="logitems" id="cLog"></div>
-  </div>
-
   <div class="card"><h3><span>Sons d'ambiance</span><span id="cSndNow"></span></h3>
     <p class="hint">Les sons sortent de l'ordi de la télé. Une seule fois, touche « Activer le son » sur l'écran de la télé.</p>
     <div class="btns" id="cAmb"></div>
@@ -2054,8 +2048,6 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const who = $('rWho'), prev = who.value;
     who.innerHTML = '<option value="">Le MJ</option>' + s.team.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
     who.value = s.team.some((m) => m.id === prev) ? prev : '';
-    $('quickLog').innerHTML = QUICK_LOG.map((q) => `<button class="b sm" data-quick="${esc(q)}">${esc(q)}</button>`).join('');
-    $('cLog').innerHTML = s.log.map((l, i) => `<div><b>${hhmm(l.t)}</b><span>${esc(l.text)}</span><button data-dellog="${i}" aria-label="Effacer cette entrée">×</button></div>`).join('');
     $('cAmb').innerHTML = [['gala', 'Gala'], ['tension', 'Tension'], ['nuit', 'Nuit'], ['', 'Silence']].map(([k, l]) => `<button class="b ${s.amb === k ? 'on' : ''}" data-amb="${k}" aria-pressed="${s.amb === k}">${l}</button>`).join('');
     $('cFx').innerHTML = Object.entries(ValmontSound.names).map(([k, l]) => `<button class="b sm" data-snd="${k}">${esc(l)}</button>`).join('');
     $('cSndNow').textContent = s.amb ? 'ambiance : ' + ({ gala: 'gala', tension: 'tension', nuit: 'nuit' }[s.amb]) : '';
@@ -2256,7 +2248,6 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (!text) return;
     commit((s) => { s.log.unshift({ t: s.t, text: text.slice(0, 110) }); s.log = s.log.slice(0, 40); });
   }
-  $('logForm').addEventListener('submit', (e) => { e.preventDefault(); addLog($('logText').value); $('logText').value = ''; });
   $('bannerForm').addEventListener('submit', (e) => { e.preventDefault(); const t = $('bannerInput').value.trim().slice(0, 60); if (t) commit((s) => { s.banner = { on: true, text: t }; }); $('bannerInput').value = ''; });
   $('lootForm').addEventListener('submit', (e) => { e.preventDefault(); const n = Math.round(Number($('lootAmt').value) || 0); if (n) commit((s) => { s.loot = Math.max(0, s.loot + n); }); $('lootAmt').value = ''; });
   $('addForm').addEventListener('submit', (e) => {
