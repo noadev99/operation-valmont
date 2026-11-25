@@ -245,6 +245,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
   <div class="card"><h3>Fil du MJ <small class="hint">(toi seul)</small></h3><div class="logitems" id="cFeed"></div></div>
 
+  <style>.camrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,#333);flex-wrap:wrap}.camrow .seg{display:flex;gap:4px}</style>
   <div class="card board"><h3><span>Plateau</span><span id="cFloorName"></span></h3>
     <div class="grid4" id="cFloors"></div>
     <div class="modes" id="cModes" role="group" aria-label="Mode du plateau"></div>
@@ -252,6 +253,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <div class="cplan" id="cPlan"></div>
     <p class="hint" id="cModeHint"></p>
     <div class="btns" id="cReveal"></div>
+    <h3 style="margin-top:14px"><span>Caméras de cet étage</span><small class="hint">une par une</small></h3>
+    <div id="cCamList"></div>
   </div>
 
   <div class="card"><h3><span>Repérage (tableau d'enquête)</span><span id="cPrep"></span></h3>
@@ -819,7 +822,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     rooms: (key) => byKey[key].rooms.filter((r) => r[0] !== 'C').map((r) => ({ id: r[0], name: r[1] })).concat(byKey[key].roof ? [] : [{ id: 'C', name: 'Couloir' }]),
     svg,
     roomAt,
-    info: (key) => { const fl = byKey[key]; return { cams: fl.cams.length, guards: fl.guards.map((g) => g.slice()), lasers: !!fl.lasers(), rooms: fl.rooms.map(([id, name, x, y, w, h]) => ({ id, name, x, y, w, h })) }; },
+    info: (key) => { const fl = byKey[key]; return { camList: fl.cams.map((c) => ({ x: c[0], y: c[1] })), cams: fl.cams.length, guards: fl.guards.map((g) => g.slice()), lasers: !!fl.lasers(), rooms: fl.rooms.map(([id, name, x, y, w, h]) => ({ id, name, x, y, w, h })) }; },
   };
 })();
 
@@ -1875,6 +1878,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     box.innerHTML = P.svg(s.floor, planOpts(s.floor, true));
     $('cModeHint').textContent = HINTS[bmode];
     const info = P.info(s.floor);
+    $('cCamList').innerHTML = info.camList.map((c, i) => { const v = vis('cam', i, s.floor), rm = P.roomAt(s.floor, c.x, c.y); return `<div class="camrow"><span>Caméra ${i + 1} · ${esc(rm ? rm.name : 'extérieur')}</span><span class="seg">${[['Cachée', 0], ['Visible', 1], ['Coupée', 2]].map(([l, n]) => `<button class="b sm ${v === n ? 'on go' : ''}" data-camset="${i}|${n}">${l}</button>`).join('')}</span></div>`; }).join('');
     $('cReveal').innerHTML = [
       `<button class="b sm" data-all="cam|1">Montrer les caméras</button>`, `<button class="b sm" data-all="cam|0">Cacher les caméras</button>`,
       `<button class="b sm" data-all="guard|1">Montrer les gardes</button>`, `<button class="b sm" data-all="guard|0">Cacher les gardes</button>`,
@@ -1983,6 +1987,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.zoom) { zoom = !zoom; return render(); }
     if (d.fog) return commit((s) => { s.fog = !s.fog; });
     if (d.out) { const id = selected; selected = null; return commit((s) => { const m = s.team.find((t) => t.id === id); if (m) { m.floor = ''; m.x = null; m.y = null; m.room = ''; } }); }
+    if (d.camset) { const [i, n] = d.camset.split('|'); return commit((s) => { s.vis[`${s.floor}|cam|${i}`] = +n; if (+n === 2) logAdd(s, 'Une caméra est coupée.'); }); }
     if (d.all) {
       const [kind, v] = d.all.split('|'), info = P.info(state.floor);
       return commit((s) => {
