@@ -487,7 +487,13 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     s += `<rect y="418" width="800" height="32" fill="#14110f"/><text x="400" y="441" text-anchor="middle" font-family="Georgia,serif" font-style="italic" font-size="19" fill="#f4ead2">${CAP[sit][st]}</text>`;
     return s + '</svg>';
   }
-  window.ValmontScenes = { svg, situations: Object.keys(TITLE).map((k) => ({ id: k, name: TITLE[k] })), states: [['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']] };
+  /* image de la scène si elle existe (scenes/<situation>-<état>.jpg|webp|png), sinon le dessin */
+  function html(sit, st, opts) {
+    const fb = svg(sit, st, opts), id = 'sc' + Math.random().toString(36).slice(2, 8);
+    window['__' + id] = (el) => { const ex = ['jpg', 'webp', 'png'], i = +el.dataset.i + 1; if (i < ex.length) { el.dataset.i = i; el.src = `scenes/${sit}-${st}.${ex[i]}`; } else { const d = document.createElement('div'); d.style.cssText = 'width:100%;height:100%'; d.innerHTML = fb; el.replaceWith(d); } };
+    return `<img data-i="0" src="scenes/${sit}-${st}.jpg" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="window.__${id}(this)">`;
+  }
+  window.ValmontScenes = { svg, html, situations: Object.keys(TITLE).map((k) => ({ id: k, name: TITLE[k] })), states: [['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']] };
 })();
 
 </script>
@@ -1945,7 +1951,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
         const box = $('scenefx');
         if (key && window.ValmontScenes) {
           const nm = (s.team || []).map((m) => m.name);
-          box.innerHTML = `<div class="frame">${ValmontScenes.svg(sc.sit, sc.st, { names: nm })}</div>`; box.hidden = false;
+          box.innerHTML = `<div class="frame">${location.protocol === 'file:' || /claude\.ai|claudeusercontent/.test(location.host) ? ValmontScenes.svg(sc.sit, sc.st, { names: nm }) : ValmontScenes.html(sc.sit, sc.st, { names: nm })}</div>`; box.hidden = false;
           if (!isConsole() && lastScene !== null) { try { ValmontSound.play(sc.st === 'ok' ? 'success' : sc.st === 'ko' ? 'fail' : 'beep'); } catch (e) {} }
         } else box.hidden = true;
       } }
