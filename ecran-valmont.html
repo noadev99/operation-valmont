@@ -108,7 +108,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .roomchip { display: grid; justify-items: center; border: 2px solid var(--blue); padding: 6px 14px; }
 .roomchip span { font: 600 .7rem var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--blue); }
 .roomchip b { font: 700 clamp(1.2rem, 2.6vw, 2.2rem) var(--mono); letter-spacing: .18em; line-height: 1; color: var(--blue); }
-.roomform { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; gap: 8px; align-items: center; background: var(--panel); border: 2px solid var(--blue); padding: 10px 14px; font: 600 .85rem var(--mono); }
+.roomform { position: absolute; bottom: 26px; right: max(18px, env(safe-area-inset-right, 0px)); z-index: 8; display: flex; gap: 8px; align-items: center; background: var(--panel); border: 2px solid var(--blue); padding: 10px 14px; font: 600 .85rem var(--mono); }
 .roomform input { width: 9ch; text-transform: uppercase; }
 .code { font: 700 2rem var(--mono); letter-spacing: .3em; color: var(--amber); }
 .board-tv { position: relative; width: 100%; height: 100%; min-height: 0; border: 6px solid #5a3d22; background: #b58452 radial-gradient(rgba(60,35,15,.22) 1.4px, transparent 1.6px) 0 0 / 11px 11px; overflow: hidden; box-shadow: inset 0 0 40px rgba(40,20,5,.55); }
@@ -134,7 +134,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 @keyframes bdrun { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .bd-card.flip, .bd-card .bs.run { animation: none; } }
 .to-sound { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font: 700 .8rem var(--mono); color: #1a1204; background: var(--amber); border: 0; padding: 6px 14px; z-index: 7; }
-.syncnote { position: absolute; right: max(18px, env(safe-area-inset-right, 0px)); bottom: 4px; font: 500 .72rem var(--mono); color: var(--muted); }
+.syncnote { position: absolute; right: max(18px, env(safe-area-inset-right, 0px)); bottom: 4px; font: 500 .72rem var(--mono); color: var(--muted); cursor: pointer; background: none; border: 0; padding: 0; }
 @media (max-width: 900px) {
   html, body { height: auto; }
   .screen { height: auto; }
@@ -230,7 +230,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   <div class="scenefx" id="scenefx" hidden></div>
   <button class="to-sound" id="soundBtn" type="button">Activer le son</button>
   <a class="to-console" href="#mj">Console MJ</a>
-  <span class="syncnote" id="syncnote"></span>
+  <button class="syncnote" id="syncnote" type="button" title="Code du salon"></button>
 </div>
 
 <div id="consoleView" class="console" hidden>
@@ -2190,7 +2190,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const st = $('cstatus');
     st.textContent = writeErr || txt;
     st.className = 'status ' + (writeErr ? 'warn' : mode === 'db' && loaded ? 'ok' : 'warn');
-    $('syncnote').textContent = mode === 'db' ? (loaded ? 'en direct' : 'connexion…') : 'local';
+    $('syncnote').textContent = (mode === 'db' ? (loaded ? 'en direct' : 'connexion…') : 'local') + (canRelay() ? ' · salon ' + (room || '?') : '');
   }
 
   const level = (a) => LEVELS.find((l) => a <= l[0]);
@@ -2286,7 +2286,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (s.auto && s.ping && s.ping.at !== lastPing && lastPing !== null) ValmontSound.play('ping');
     lastAlert = s.alert; lastPing = s.ping ? s.ping.at : 0;
   }
-  $('roomForm').addEventListener('submit', (e) => { e.preventDefault(); const c = $('roomIn').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); if (c.length >= 4) { setRoom(c); startRelay(true); render(); } });
+  let roomAsk = false;
+  $('syncnote').addEventListener('click', () => { if (isConsole()) return; roomAsk = !roomAsk; $('roomIn').value = room; render(); renderStatus(); if (roomAsk) setTimeout(() => $('roomIn').focus(), 50); });
+  $('roomForm').addEventListener('submit', (e) => { e.preventDefault(); const c = $('roomIn').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); if (c.length >= 4) { setRoom(c); roomAsk = false; startRelay(true); render(); renderStatus(); } });
   document.getElementById('soundBtn').addEventListener('click', () => { ValmontSound.unlock(); setTimeout(() => { ValmontSound.play('ping'); render(); }, 80); });
   function renderScreen() {
     const s = state, fl = P.floors.find((f) => f.key === s.floor);
@@ -2296,7 +2298,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     handleSound(s);
     const showCode = !!room && canRelay();
     $('roomChip').hidden = !showCode; if (showCode) $('roomCode').textContent = room;
-    $('roomForm').hidden = !(canRelay() && !room);
+    $('roomForm').hidden = !(canRelay() && roomAsk);
     const left = 540 - s.t;
     const cd = $('countdown');
     cd.textContent = left > 0 ? `fourgon dans ${Math.floor(left / 60)} h ${String(left % 60).padStart(2, '0')}` : 'le fourgon est là';
@@ -2668,15 +2670,18 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (isConsole() || window.parent !== window || !window.ValmontIntro || /[?&]direct/.test(location.search)) return;
     const b = document.createElement('div'); b.id = 'boot';
     b.style.cssText = 'position:fixed;inset:0;z-index:120;background:#000;display:grid;place-items:center';
-    b.innerHTML = '<button type="button" style="font:400 clamp(2rem,5vw,3.4rem) var(--display);letter-spacing:.18em;padding:2.2vh 6vh;background:transparent;color:#f3ead6;border:2px solid rgba(243,234,214,.75);cursor:pointer">LANCER</button>';
+    b.innerHTML = '<div style="display:grid;gap:5vh;justify-items:center"><button type="button" id="bootGo" style="font:400 clamp(2rem,5vw,3.4rem) var(--display);letter-spacing:.18em;padding:2.2vh 6vh;background:transparent;color:#f3ead6;border:2px solid rgba(243,234,214,.75);cursor:pointer">LANCER</button>' + (canRelay() ? '<label style="font:500 .85rem var(--mono);color:rgba(243,234,214,.45);display:flex;gap:10px;align-items:center">Code du salon <input id="bootRoom" maxlength="10" autocomplete="off" placeholder="optionnel" style="width:11ch;text-transform:uppercase;background:#0b0d12;color:#f3ead6;border:1px solid rgba(243,234,214,.25);padding:6px 8px;font:600 .95rem var(--mono)"></label>' : '') + '</div>';
     document.body.appendChild(b);
     const go = () => {
+      const ri = document.getElementById('bootRoom'), c = ri ? ri.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+      if (c.length >= 4 && c !== room) { setRoom(c); startRelay(true); }
       b.remove(); try { ValmontSound.unlock(); } catch (e) {}
       const nm = (state.team || []).map((m) => m.name);
       setTimeout(() => ValmontIntro.play({ names: nm, onEnd: () => ValmontIntro.poster({ names: nm, play: true, onClose: () => render() }) }), 120);
     };
-    b.querySelector('button').addEventListener('click', go);
-    setTimeout(() => { try { b.querySelector('button').focus(); } catch (e) {} }, 100);
+    const ri = b.querySelector('#bootRoom'); if (ri) { ri.value = room; ri.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); }); }
+    b.querySelector('#bootGo').addEventListener('click', go);
+    setTimeout(() => { try { b.querySelector('#bootGo').focus(); } catch (e) {} }, 100);
   }
   window.addEventListener('hashchange', () => { if (isConsole()) { const b = document.getElementById('boot'); if (b) b.remove(); } });
 
