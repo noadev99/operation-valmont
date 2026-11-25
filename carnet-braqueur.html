@@ -652,10 +652,34 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   const TABS = [['perso', '1', 'Perso'], ['matos', '2', 'Matériel'], ['reperage', '3', 'Repérage'], ['fiche', '4', 'Fiche']];
   function go(step) { S.step = step; save(); render(); window.scrollTo(0, 0); }
 
+  /* lancer le d20 : bouton toujours visible, quel que soit l'onglet */
+  function doRoll(j, wantBoost) {
+    const r = role(); if (!r) return;
+    const boost = wantBoost && S.en > 0;
+    if (boost) { S.en -= 1; save(); }
+    const dv = 1 + Math.floor(Math.random() * 20);
+    render();
+    send({ k: 'd', pid: S.pid, who: S.name, skill: SKILLS[j], d: dv, mod: r.s[j] + (boost ? 3 : 0) });
+    ValmontDice.overlay({ d: dv, title: S.name + ' · ' + SKILLS[j], mods: [{ label: SKILLS[j], v: r.s[j] }, { label: 'effort', v: boost ? 3 : 0 }] });
+  }
+  function closeSheet() { const e = document.getElementById('sheet'); if (e) e.remove(); }
+  function openSheet() {
+    const r = role(); if (!r) return; closeSheet();
+    const el = document.createElement('div'); el.id = 'sheet';
+    el.style.cssText = 'position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:flex;align-items:flex-end';
+    el.innerHTML = `<div style="width:100%;background:var(--bg);border-top:3px solid var(--amber,#e8a020);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:12px"><b style="font-size:1.1rem">Lancer le d20 : quelle compétence ?</b><label class="boost"><input type="checkbox" id="fboost2" ${S.en < 1 ? 'disabled' : ''}><span>Effort : <b>+3</b> pour 1 énergie (il t'en reste ${S.en})</span></label><div class="skills">${SKILLS.map((k, j) => `<button class="skill" data-roll2="${j}"><small>${k}</small><b>+${r.s[j]}</b><span>Lancer</span></button>`).join('')}</div><button class="btn" id="sheetClose" type="button">Annuler</button></div>`;
+    document.body.appendChild(el);
+  }
+  function ensureFab() {
+    let f = document.getElementById('fab');
+    if (S.role < 0 || embedded === 'none') { if (f) f.remove(); return; }
+    if (!f) { f = document.createElement('button'); f.id = 'fab'; f.type = 'button'; f.textContent = 'Lancer un dé'; f.style.cssText = 'position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:30;padding:16px 22px;font:700 1.05rem var(--body);background:var(--amber,#e8a020);color:#14110f;border:3px solid #14110f;box-shadow:0 6px 18px rgba(0,0,0,.5);border-radius:999px;touch-action:manipulation'; document.body.appendChild(f); }
+  }
   function render() {
     document.getElementById('who').textContent = S.name ? S.name + (role() ? ' · ' + role().name : '') : '';
     document.getElementById('tabs').innerHTML = TABS.map(([k, n, l]) => `<button class="${S.step === k ? 'on' : ''}" data-tab="${k}" ${k !== 'perso' && S.role < 0 ? 'disabled' : ''}><b>${n}</b>${l}</button>`).join('');
     ({ perso, matos, reperage, fiche })[S.step]();
+    ensureFab();
   }
 
   /* ---------- 1. perso ---------- */
@@ -840,15 +864,10 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     }
     if (b.id === 'okRes') { S.last = null; save(); return render(); }
     if (d.pool) { const r = role(), k = d.pool; S[k] = Math.max(0, Math.min(r[k], S[k] + Number(d.d))); save(); return render(); }
-    if (d.roll != null) {
-      const r = role(), j = +d.roll, fb = document.getElementById('fboost'), boost = fb && fb.checked && S.en > 0;
-      if (boost) { S.en -= 1; save(); }
-      const dv = 1 + Math.floor(Math.random() * 20), total = dv + r.s[j] + (boost ? 3 : 0);
-      render();
-      send({ k: 'd', pid: S.pid, who: S.name, skill: SKILLS[j], d: dv, mod: r.s[j] + (boost ? 3 : 0) });
-      ValmontDice.overlay({ d: dv, title: S.name + ' · ' + SKILLS[j], mods: [{ label: SKILLS[j], v: r.s[j] }, { label: 'effort', v: boost ? 3 : 0 }] });
-      return;
-    }
+    if (d.roll != null) { const fb = document.getElementById('fboost'); return doRoll(+d.roll, !!(fb && fb.checked)); }
+    if (d.roll2 != null) { const fb = document.getElementById('fboost2'); closeSheet(); return doRoll(+d.roll2, !!(fb && fb.checked)); }
+    if (b.id === 'fab') return openSheet();
+    if (b.id === 'sheetClose') return closeSheet();
     if (b.id === 'resetAll') { if (!confirmReset) { confirmReset = true; return render(); } confirmReset = false; try { const r = JSON.parse(localStorage.getItem('valmont-roster') || '{}'); delete r[S.pid]; localStorage.setItem('valmont-roster', JSON.stringify(r)); } catch (e) {} S = blank(); lastHp = S.hp; lastEn = S.en; save(); return render(); }
   });
   document.addEventListener('change', (e) => {
