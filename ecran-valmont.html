@@ -531,7 +531,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 <script>
 /* Intro animée d'Opération Valmont (motion design + effets sonores + voix off), puis l'affiche du film.
    ValmontIntro.play({ names, onEnd })   joue l'intro en plein écran ; « Passer » ou Échap pour sauter
-   ValmontIntro.poster({ names, onClose }) ouvre l'affiche
+   ValmontIntro.poster({ names, onClose }) ouvre l'affiche (scenes/affiche-finale.jpg telle quelle si elle existe)
    ValmontIntro.close()                  ferme tout
    ValmontIntro.LINES                     le texte de la voix off (voix-01 … voix-10)
    Voix off : fichiers intro/voix-01.mp3 (ou .m4a, .webm, .ogg, .wav) en priorité, sinon celles enregistrées sur voix.html (même navigateur).
@@ -789,7 +789,11 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     document.body.appendChild(el);
     // l'image de l'affiche si elle existe
     const art = el.querySelector('.art'), fb = el.querySelector('.facade-fb');
-    (async () => { if (location.protocol === 'file:') return; for (const e of ['jpg', 'webp', 'png']) { const ok = await new Promise((r) => { const im = new Image(); im.onload = () => r(true); im.onerror = () => r(false); im.src = `scenes/affiche.${e}`; }); if (ok) { art.style.backgroundImage = `url(scenes/affiche.${e})`; fb.remove(); return; } } })();
+    const load = (u) => new Promise((r) => { const im = new Image(); im.onload = () => r(true); im.onerror = () => r(false); im.src = u; });
+    (async () => { if (location.protocol === 'file:') return;
+      // affiche finale : l'image contient déjà le titre et les crédits, on l'affiche seule
+      for (const e of ['jpg', 'png', 'webp']) { if (await load(`scenes/affiche-finale.${e}`)) { art.style.backgroundImage = `url(scenes/affiche-finale.${e})`; art.style.animation = 'none'; art.style.backgroundSize = 'contain'; art.style.backgroundRepeat = 'no-repeat'; el.querySelectorAll('.facade-fb,.shade,.cast,.tag,.ttl,.date,.bill,.rate').forEach((x) => x.remove()); return; } }
+      for (const e of ['jpg', 'webp', 'png']) { const ok = await new Promise((r) => { const im = new Image(); im.onload = () => r(true); im.onerror = () => r(false); im.src = `scenes/affiche.${e}`; }); if (ok) { art.style.backgroundImage = `url(scenes/affiche.${e})`; fb.remove(); return; } } })();
     sfx('boom'); setTimeout(() => sfx('stinger'), 300);
     const shut = () => { el.remove(); document.removeEventListener('keydown', k); if (opts.onClose) opts.onClose(); };
     const k = (e) => { if (e.key === 'Escape') shut(); };
