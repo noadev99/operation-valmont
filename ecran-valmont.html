@@ -89,7 +89,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 @media (prefers-reduced-motion: no-preference) { .scenefx .frame { animation: pop .4s ease-out; } }
 .banner { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(9,13,20,.78); z-index: 5; padding: 24px; }
 .banner div { border: 4px solid var(--red); background: var(--bg); padding: 28px 44px; font-family: var(--display); font-size: clamp(2rem, 6vw, 5.5rem); color: var(--red); text-align: center; line-height: 1.05; max-width: 90%; overflow-wrap: anywhere; }
-.rollfx { position: absolute; right: max(24px, env(safe-area-inset-right, 0px)); bottom: 24px; z-index: 6; background: var(--panel); border: 2px solid var(--amber); padding: 18px 26px; display: grid; justify-items: center; gap: 4px; min-width: 260px; }
+.rollfx { position: absolute; right: max(24px, env(safe-area-inset-right, 0px)); bottom: 24px; z-index: 8; background: var(--panel); border: 2px solid var(--amber); padding: 18px 26px; display: grid; justify-items: center; gap: 4px; min-width: 260px; }
 .rollfx .who { font-family: var(--mono); font-size: .9rem; color: var(--muted); }
 .rollfx .num { font-family: var(--mono); font-weight: 700; font-size: 4.4rem; line-height: 1; color: var(--amber); font-variant-numeric: tabular-nums; }
 .rollfx .det { font-family: var(--mono); font-size: .85rem; color: var(--muted); }
@@ -249,7 +249,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
 
   <div class="card"><h3>Fil du MJ <small class="hint">(toi seul)</small></h3><div class="logitems" id="cFeed"></div></div>
 
-  <style>.camrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,#333);flex-wrap:wrap}.camrow .seg{display:flex;gap:4px}</style>
+  <style>.camrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line,#333);flex-wrap:wrap}.camrow .seg,.seg{display:flex;gap:4px;flex-wrap:wrap}</style>
   <div class="card board"><h3><span>Plateau</span><span id="cFloorName"></span></h3>
     <div class="grid4" id="cFloors"></div>
     <div class="modes" id="cModes" role="group" aria-label="Mode du plateau"></div>
@@ -323,7 +323,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
     <div id="cScenes"></div>
     <button class="b red" id="sceneOff">Fermer la scène</button>
-    <p class="hint">Les deux braqueurs en dessin, plein écran sur la télé. Montre « En cours » pendant l'action, puis « Réussi » ou « Raté » selon le dé.</p>
+    <p class="hint">Choisis qui joue et la difficulté, touche la situation : l'image « en train » s'affiche. Quand le joueur lance son dé, l'image passe toute seule à « réussite » ou « échec ». Les boutons En cours / Réussi / Raté servent à corriger.</p>
   </div>
 
   <div class="card"><h3>Annonce plein écran</h3>
@@ -1673,6 +1673,13 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       logAdd(s, `${d.who} · ${d.skill} : ${total}${dd ? (win ? ' (réussi)' : ' (raté)') : ''}`);
       feedAdd(s, `${d.who} · ${d.skill} : dé ${d.d} + ${d.mod} = ${total}${dd ? ' contre ' + dd + ' → ' + verdict + (verdict === 'Raté de peu' ? ' : propose une réussite avec un coût' : '') : ' : dis-lui la difficulté'}`);
       if (d.d === 1) { s.alert = Math.min(10, s.alert + 1); logAdd(s, '1 naturel : alerte ' + s.alert); }
+      if (s.scene && s.scene.on && s.scene.wait) {
+        if (dd || d.d === 20 || d.d === 1) {
+          const at0 = s.scene.at, st = win ? 'ok' : 'ko'; s.scene.wait = false;
+          feedAdd(s, 'Scène : ' + (win ? 'réussite' : 'échec') + ' affichée sur la télé dans quelques secondes.');
+          setTimeout(() => commit((x) => { if (x.scene && x.scene.on && x.scene.at === at0) sceneResult(x, st); }), 4200);
+        } else feedAdd(s, 'Scène en attente : choisis une difficulté pour que la télé juge le jet.');
+      }
     },
     g(s, d) {
       const rq = { id: d.mid || String(Date.now()), pid: d.pid, who: d.who, floor: d.floor, room: d.room, rn: d.rn, text: d.text, at: Date.now() };
@@ -1960,7 +1967,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       </div>`).join('') : '<p class="empty">Le MJ ajoute les braqueurs depuis la console.</p>';
     $('loot').textContent = euro(s.loot);
     $('log').innerHTML = s.log.length ? s.log.slice(0, 8).map((l) => `<div><b>${hhmm(l.t)}</b><span>${esc(l.text)}</span></div>`).join('') : '<p class="empty">Les décisions de l\'équipe s\'afficheront ici.</p>';
-    { const sc = s.scene, key = sc && sc.on ? sc.sit + '|' + sc.st + '|' + (sc.who || '') + '|' + sc.at : '';
+    { const sc = s.scene, key = sc && sc.on && !(sc.hideAt && Date.now() > sc.hideAt) ? sc.sit + '|' + sc.st + '|' + (sc.who || '') + '|' + sc.at : '';
       if (key !== lastScene) {
         lastScene = key;
         const box = $('scenefx');
@@ -1968,6 +1975,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
           const nm = (s.team || []).map((m) => m.name);
           box.innerHTML = `<div class="frame">${location.protocol === 'file:' || /claude\.ai|claudeusercontent/.test(location.host) ? ValmontScenes.svg(sc.sit, sc.st, { names: nm }) : ValmontScenes.html(sc.sit, sc.st, { names: nm, who: sc.who || '' })}</div>`; box.hidden = false;
           if (!isConsole() && lastScene !== null) { try { ValmontSound.play(sc.st === 'ok' ? 'success' : sc.st === 'ko' ? 'fail' : 'beep'); } catch (e) {} }
+          if (sc.hideAt) { clearTimeout(sceneT); sceneT = setTimeout(() => { $('scenefx').hidden = true; lastScene = ''; }, Math.max(0, sc.hideAt - Date.now())); }
         } else box.hidden = true;
       } }
     $('banner').hidden = !(s.banner.on && s.banner.text);
@@ -1984,7 +1992,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     } else if (lastRollAt === null) lastRollAt = s.roll ? s.roll.at : 0;
   }
 
-  let lastScene = '', sceneWho = '';
+  let lastScene = '', sceneWho = '', sceneT = null;
+  const hideSec = (s) => (s.au && s.au.sceneHide != null ? s.au.sceneHide : 15);
+  function sceneResult(s, st) { s.scene = Object.assign({}, s.scene, { st, wait: false, at: Date.now(), hideAt: st !== 'action' && hideSec(s) ? Date.now() + hideSec(s) * 1000 : 0 }); }
   let confirmDel = null, confirmReset = false;
   function renderSalon() {
     const box = $('cSalon'); if (!box) return;
@@ -2053,7 +2063,11 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     $('bannerOff').disabled = !s.banner.on;
     if ($('cScenes') && window.ValmontScenes) {
       const tn = (s.team || []).map((m) => m.name);
-      $('cScenes').innerHTML = `<div class="seg" style="margin-bottom:8px">${[['', 'Les deux'], ['a', 'Seul · ' + (tn[0] || 'A')], ['b', 'Seul · ' + (tn[1] || 'B')]].map(([k, l]) => `<button class="b sm ${sceneWho === k ? 'on go' : ''}" data-scwho="${k}">${esc(l)}</button>`).join('')}</div>` + ValmontScenes.situations.map((x) => `<div class="camrow"><span>${esc(x.name)}</span><span class="seg">${ValmontScenes.states.map(([k, l]) => `<button class="b sm ${s.scene && s.scene.on && s.scene.sit === x.id && s.scene.st === k ? 'on go' : ''}" data-scene="${x.id}|${k}">${l}</button>`).join('')}</span></div>`).join('');
+      const sc = s.scene && s.scene.on ? s.scene : null, names = Object.fromEntries(ValmontScenes.situations.map((x) => [x.id, x.name]));
+      $('cScenes').innerHTML = `<div class="hint" style="margin:0 0 4px">1. Qui joue</div><div class="seg" style="margin-bottom:8px">${[['', 'Les deux'], ['a', 'Seul · ' + (tn[0] || 'A')], ['b', 'Seul · ' + (tn[1] || 'B')]].map(([k, l]) => `<button class="b sm ${sceneWho === k ? 'on go' : ''}" data-scwho="${k}">${esc(l)}</button>`).join('')}</div>` + `<div class="hint" style="margin:6px 0 4px">2. Difficulté (la télé juge le jet toute seule)</div><div class="seg" style="margin-bottom:8px">${[[null, 'Aucune'], [8, '8'], [12, '12'], [15, '15'], [18, '18']].map(([v, l]) => `<button class="b sm ${s.dd === v ? 'on go' : ''}" data-dd="${v}" type="button">${l}</button>`).join('')}</div>`
+        + `<div class="hint" style="margin:6px 0 4px">3. Touche la situation : l'image « en train » apparaît</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:10px">${ValmontScenes.situations.map((x) => `<button class="b sm ${sc && sc.sit === x.id ? 'on go' : ''}" data-scgo="${x.id}" type="button">${esc(x.name)}</button>`).join('')}</div>`
+        + (sc ? `<div class="camrow"><span><b>${esc(names[sc.sit] || '')}</b> · ${sc.wait ? 'en attente du jet…' : sc.st === 'ok' ? 'réussite' : sc.st === 'ko' ? 'échec' : 'en cours'}</span><span class="seg">${[['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']].map(([k, l]) => `<button class="b sm ${sc.st === k ? 'on go' : ''}" data-scres="${k}" type="button">${l}</button>`).join('')}</span></div>` : '')
+        + `<div class="hint" style="margin:8px 0 4px">Retour au plan après le résultat</div><div class="seg">${[[0, 'Jamais'], [8, '8 s'], [15, '15 s'], [30, '30 s']].map(([v, l]) => `<button class="b sm ${hideSec(s) === v ? 'on go' : ''}" data-schide="${v}" type="button">${l}</button>`).join('')}</div>`;
       $('sceneOff').disabled = !(s.scene && s.scene.on);
     }
     $('resetBtn').textContent = confirmReset ? 'Toucher encore pour confirmer' : 'Nouvelle partie';
@@ -2184,6 +2198,9 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.fog) return commit((s) => { s.fog = !s.fog; });
     if (d.out) { const id = selected; selected = null; return commit((s) => { const m = s.team.find((t) => t.id === id); if (m) { m.floor = ''; m.x = null; m.y = null; m.room = ''; } }); }
     if (d.scwho != null) { sceneWho = d.scwho; return render(); }
+    if (d.scgo) return commit((s) => { s.scene = { on: true, sit: d.scgo, st: 'action', who: sceneWho, at: Date.now(), wait: true, hideAt: 0 }; });
+    if (d.scres) return commit((s) => { if (s.scene && s.scene.on) sceneResult(s, d.scres); });
+    if (d.schide != null) return commit((s) => { s.au.sceneHide = +d.schide; });
     if (d.scene) { const [sit, st] = d.scene.split('|'); return commit((s) => { s.scene = { on: true, sit, st, who: sceneWho, at: Date.now() }; }); }
     if (b.id === 'sceneOff') return commit((s) => { s.scene = null; });
     if (d.camset) { const [i, n] = d.camset.split('|'); return commit((s) => { s.vis[`${s.floor}|cam|${i}`] = +n; if (+n === 2) logAdd(s, 'Une caméra est coupée.'); }); }
