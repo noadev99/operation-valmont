@@ -1718,7 +1718,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       else if (dd) { win = total >= dd; verdict = win ? 'Réussite' : dd - total <= 3 ? 'Raté de peu' : 'Échec'; }
       s.roll = { at: Date.now(), who: d.who, skill: d.skill, d: d.d, mod: d.mod, dd: dd || null, total, verdict, win };
       logAdd(s, `${d.who} · ${d.skill} : ${total}${dd ? (win ? ' (réussi)' : ' (raté)') : ''}`);
-      feedAdd(s, `${d.who} · ${d.skill} : dé ${d.d} + ${d.mod} = ${total}${dd ? ' contre ' + dd + ' → ' + verdict + (verdict === 'Raté de peu' ? ' : propose une réussite avec un coût' : '') : ' : dis-lui la difficulté'}`);
+      feedAdd(s, `${d.who} · ${d.skill} : dé ${d.d} + ${d.mod} = ${total}${d.tl ? ' (outil : ' + d.tl + ')' : ''}${dd ? ' contre ' + dd + ' → ' + verdict + (verdict === 'Raté de peu' ? ' : propose une réussite avec un coût' : '') : ' : dis-lui la difficulté'}`);
       if (d.d === 1) { s.alert = Math.min(10, s.alert + 1); logAdd(s, '1 naturel : alerte ' + s.alert); }
       sceneJudge(s, d.d, total, dd);
     },

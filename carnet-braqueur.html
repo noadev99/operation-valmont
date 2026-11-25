@@ -548,6 +548,8 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     ["Perceuse thermique", 3, "Perce la chambre forte : 3 réussites en Technique DD 15. Chaque jet raté fait du bruit."],
     ["Charge de brèche", 3, "Ouvre un mur ou une porte non blindée. Très bruyant."]
   ];
+  /* outils qui donnent un bonus à une compétence : [compétence, bonus] */
+  const TOOLB = { 'Crochets de serrurier': ['Technique', 2], 'Gants et combinaison noire': ['Discrétion', 1], 'Lampe UV': ['Technique', 3], 'Lunettes thermiques': ['Discrétion', 3], 'Costume de gala + invitation': ['Baratin', 2], 'Uniforme de garde': ['Baratin', 3], 'Ordinateur de piratage': ['Technique', 3] };
   const BUDGET = 4;
   const pic = (name) => (window.ValmontPortraits ? ValmontPortraits.svg(name) : '');
   const DIFF = (dd) => dd <= 8 ? 'facile' : dd <= 10 ? 'assez facile' : dd <= 12 ? 'moyen' : dd <= 14 ? 'difficile' : 'très difficile';
@@ -653,21 +655,24 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   function go(step) { S.step = step; save(); render(); window.scrollTo(0, 0); }
 
   /* lancer le d20 : bouton toujours visible, quel que soit l'onglet */
-  function doRoll(j, wantBoost) {
+  function doRoll(j, wantBoost, tools) {
     const r = role(); if (!r) return;
     const boost = wantBoost && S.en > 0;
     if (boost) { S.en -= 1; save(); }
+    tools = tools || [];
+    const tb = tools.reduce((a, n) => a + (TOOLB[n] ? TOOLB[n][1] : 0), 0);
     const dv = 1 + Math.floor(Math.random() * 20);
     render();
-    send({ k: 'd', pid: S.pid, who: S.name, skill: SKILLS[j], d: dv, mod: r.s[j] + (boost ? 3 : 0) });
-    ValmontDice.overlay({ d: dv, title: S.name + ' · ' + SKILLS[j], mods: [{ label: SKILLS[j], v: r.s[j] }, { label: 'effort', v: boost ? 3 : 0 }] });
+    send({ k: 'd', pid: S.pid, who: S.name, skill: SKILLS[j], d: dv, mod: r.s[j] + (boost ? 3 : 0) + tb, tl: tools.join(', ') });
+    ValmontDice.overlay({ d: dv, title: S.name + ' · ' + SKILLS[j], mods: [{ label: SKILLS[j], v: r.s[j] }, { label: 'effort', v: boost ? 3 : 0 }].concat(tb ? [{ label: 'outil', v: tb }] : []) });
   }
+  const ownedTools = () => S.gear.concat(gifts()).filter((n) => TOOLB[n]);
   function closeSheet() { const e = document.getElementById('sheet'); if (e) e.remove(); }
   function openSheet() {
     const r = role(); if (!r) return; closeSheet();
     const el = document.createElement('div'); el.id = 'sheet';
     el.style.cssText = 'position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:flex;align-items:flex-end';
-    el.innerHTML = `<div style="width:100%;background:var(--bg);border-top:3px solid var(--amber,#e8a020);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:12px"><b style="font-size:1.1rem">Lancer le d20 : quelle compétence ?</b><label class="boost"><input type="checkbox" id="fboost2" ${S.en < 1 ? 'disabled' : ''}><span>Effort : <b>+3</b> pour 1 énergie (il t'en reste ${S.en})</span></label><div class="skills">${SKILLS.map((k, j) => `<button class="skill" data-roll2="${j}"><small>${k}</small><b>+${r.s[j]}</b><span>Lancer</span></button>`).join('')}</div><button class="btn" id="sheetClose" type="button">Annuler</button></div>`;
+    el.innerHTML = `<div style="width:100%;background:var(--bg);border-top:3px solid var(--amber,#e8a020);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:12px"><b style="font-size:1.1rem">Lancer le d20 : quelle compétence ?</b><label class="boost"><input type="checkbox" id="fboost2" ${S.en < 1 ? 'disabled' : ''}><span>Effort : <b>+3</b> pour 1 énergie (il t'en reste ${S.en})</span></label><div style="display:grid;gap:10px">${SKILLS.map((k, j) => { const ts = ownedTools().filter((n) => TOOLB[n][0] === k); return `<div class="skblk" style="display:grid;gap:4px"><button class="skill" data-roll2="${j}" style="width:100%"><small>${k}</small><b>+${r.s[j]}</b><span>Lancer</span></button>${ts.map((n) => `<label class="boost"><input type="checkbox" data-gb="${esc(n)}" ${S.used[n] ? 'disabled' : ''}><span>Utiliser : ${esc(n)} <b>+${TOOLB[n][1]}</b>${S.used[n] ? ' (cassé / utilisé)' : ''}</span></label>`).join('')}</div>`; }).join('')}</div><button class="btn" id="sheetClose" type="button">Annuler</button></div>`;
     document.body.appendChild(el);
   }
   function ensureFab() {
@@ -814,8 +819,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
       ${moveHtml()}
       <div class="card"><b>Lancer le d20</b><p class="muted" style="font-size:.88rem">Touche la compétence que le MJ te demande. Il te dira si tu as réussi.</p>
         <label class="boost"><input type="checkbox" id="fboost" ${S.en < 1 ? 'disabled' : ''}><span>Effort : <b>+3</b> pour 1 énergie</span></label>
-        <div class="skills">${SKILLS.map((k, j) => `<button class="skill" data-roll="${j}"><small>${k}</small><b>+${r.s[j]}</b><span>Lancer</span></button>`).join('')}</div>
-        <div id="froll" class="clue" hidden></div></div>
+        <button class="btn go full" id="fab2" type="button">Lancer un dé</button></div>
       <div class="card"><b>${esc(r.ab)}</b><p class="muted" style="font-size:.9rem">${esc(r.abd)}</p></div>
       <div style="display:grid;gap:8px"><h2>Matériel</h2>
         ${items.length ? `<div class="gearlist">${items.map(([n, d], i) => `<label class="${S.used[n] ? 'used' : ''}"><input type="checkbox" data-used="${esc(n)}" ${S.used[n] ? 'checked' : ''}><span>${esc(n)}<small>${esc(d)}</small></span></label>`).join('')}</div>` : '<p class="muted">Aucun matériel.</p>'}
@@ -865,8 +869,8 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     if (b.id === 'okRes') { S.last = null; save(); return render(); }
     if (d.pool) { const r = role(), k = d.pool; S[k] = Math.max(0, Math.min(r[k], S[k] + Number(d.d))); save(); return render(); }
     if (d.roll != null) { const fb = document.getElementById('fboost'); return doRoll(+d.roll, !!(fb && fb.checked)); }
-    if (d.roll2 != null) { const fb = document.getElementById('fboost2'); closeSheet(); return doRoll(+d.roll2, !!(fb && fb.checked)); }
-    if (b.id === 'fab') return openSheet();
+    if (d.roll2 != null) { const fb = document.getElementById('fboost2'), blk = b.closest('.skblk'); const tools = blk ? [...blk.querySelectorAll('[data-gb]:checked')].map((x) => x.dataset.gb) : []; closeSheet(); return doRoll(+d.roll2, !!(fb && fb.checked), tools); }
+    if (b.id === 'fab' || b.id === 'fab2') return openSheet();
     if (b.id === 'sheetClose') return closeSheet();
     if (b.id === 'resetAll') { if (!confirmReset) { confirmReset = true; return render(); } confirmReset = false; try { const r = JSON.parse(localStorage.getItem('valmont-roster') || '{}'); delete r[S.pid]; localStorage.setItem('valmont-roster', JSON.stringify(r)); } catch (e) {} S = blank(); lastHp = S.hp; lastEn = S.en; save(); return render(); }
   });
