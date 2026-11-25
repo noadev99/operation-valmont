@@ -84,6 +84,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .log div:first-child span { color: var(--fg); font-weight: 600; }
 .log div span { color: #c4cedb; overflow-wrap: anywhere; }
 .empty { color: var(--muted); font-size: .9rem; }
+.scenefx { position: absolute; inset: 0; z-index: 7; background: #05070b; display: grid; place-items: center; padding: 2vmin; }
+.scenefx .frame { width: min(100%, 177vh); aspect-ratio: 16/9; border: 4px solid #14110f; box-shadow: 0 0 0 3px var(--amber); }
+@media (prefers-reduced-motion: no-preference) { .scenefx .frame { animation: pop .4s ease-out; } }
 .banner { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(9,13,20,.78); z-index: 5; padding: 24px; }
 .banner div { border: 4px solid var(--red); background: var(--bg); padding: 28px 44px; font-family: var(--display); font-size: clamp(2rem, 6vw, 5.5rem); color: var(--red); text-align: center; line-height: 1.05; max-width: 90%; overflow-wrap: anywhere; }
 .rollfx { position: absolute; right: max(24px, env(safe-area-inset-right, 0px)); bottom: 24px; z-index: 6; background: var(--panel); border: 2px solid var(--amber); padding: 18px 26px; display: grid; justify-items: center; gap: 4px; min-width: 260px; }
@@ -218,6 +221,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   <form class="roomform" id="roomForm" hidden><label for="roomIn">Code du salon</label><input id="roomIn" maxlength="10" autocomplete="off"><button class="b go" type="submit">OK</button></form>
   <div class="banner" id="banner" hidden><div id="bannerText"></div></div>
   <div class="rollfx" id="rollfx" hidden></div>
+  <div class="scenefx" id="scenefx" hidden></div>
   <button class="to-sound" id="soundBtn" type="button">Activer le son</button>
   <a class="to-console" href="#mj">Console MJ</a>
   <span class="syncnote" id="syncnote"></span>
@@ -316,6 +320,12 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     <p class="hint">Sons automatiques : le dé qui roule, et l'alarme quand l'alerte atteint 7.</p>
   </div>
 
+  <div class="card"><h3><span>Scènes illustrées</span><span id="cSceneNow"></span></h3>
+    <div id="cScenes"></div>
+    <button class="b red" id="sceneOff">Fermer la scène</button>
+    <p class="hint">Les deux braqueurs en dessin, plein écran sur la télé. Montre « En cours » pendant l'action, puis « Réussi » ou « Raté » selon le dé.</p>
+  </div>
+
   <div class="card"><h3>Annonce plein écran</h3>
     <div class="btns" id="quickBanner"></div>
     <form class="row" id="bannerForm" autocomplete="off"><input id="bannerInput" maxlength="60" placeholder="Texte libre" aria-label="Texte de l'annonce"><button class="b" type="submit">Afficher</button></form>
@@ -333,6 +343,154 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
   </div>
 </div>
 
+<script>
+/* Scènes illustrées d'Opération Valmont : les deux braqueurs en dessin, pour la télé.
+   ValmontScenes.svg(situation, etat, opts) → texte SVG (800×450)
+   situations : hack, coffre, garde, fuite · états : action, ok, ko
+   opts : { names: [nomA, nomB] } (étiquettes facultatives) */
+(function () {
+  const OL = '#14110f';
+  /* ----- visages ----- */
+  function head(w, e) {
+    const A = w === 'A', sk = A ? '#e3b18b' : '#efc3a0', hair = A ? '#2b1d17' : '#a47a4a', br = A ? '#241812' : '#6a4a2c';
+    let g = '';
+    if (!A) g += `<path d="M-38 -12 C-50 30 -46 62 -34 80 C-22 70 -22 40 -26 10 Z M38 -12 C50 30 46 62 34 80 C22 70 22 40 26 10 Z" fill="${hair}" stroke="${OL}" stroke-width="3"/>`;
+    g += `<ellipse cx="-31" cy="4" rx="6" ry="9" fill="${sk}" stroke="${OL}" stroke-width="3"/><ellipse cx="31" cy="4" rx="6" ry="9" fill="${sk}" stroke="${OL}" stroke-width="3"/>`;
+    g += `<ellipse cx="0" cy="0" rx="31" ry="37" fill="${sk}" stroke="${OL}" stroke-width="3.5"/>`;
+    if (A) {
+      g += `<path d="M-28 10 C-24 36 24 36 28 10 C22 24 -22 24 -28 10Z" fill="rgba(45,28,20,.38)"/>`;
+      g += `<path d="M-34 -6 C-40 -44 -8 -56 14 -50 C36 -46 42 -24 33 -4 C30 -18 24 -26 8 -28 C-6 -30 -22 -22 -34 -6Z M-18 -44 C-6 -62 24 -58 34 -38 C20 -48 2 -50 -18 -44Z" fill="${hair}" stroke="${OL}" stroke-width="3" stroke-linejoin="round"/>`;
+    } else {
+      g += `<path d="M-31 -10 C-10 -26 10 -26 31 -10 L31 -2 C10 -16 -10 -16 -31 -2Z" fill="${hair}" stroke="${OL}" stroke-width="2.5"/>`;
+      g += `<path d="M-36 -14 C-38 -62 38 -62 36 -14 C14 -24 -14 -24 -36 -14Z" fill="#1c1c1f" stroke="${OL}" stroke-width="3"/><rect x="-15" y="-40" width="30" height="8" rx="2" fill="#2e2e33" stroke="${OL}" stroke-width="2"/><rect x="-5" y="-41" width="10" height="10" rx="2" fill="#c9ced3" stroke="${OL}" stroke-width="2"/>`;
+    }
+    const my = A ? 0 : 6;
+    // yeux + sourcils + bouche selon l'expression
+    const brow = (s) => `<path d="M-22 ${-14 - s} L-6 ${-14 + s}" stroke="${br}" stroke-width="5" stroke-linecap="round"/><path d="M22 ${-14 - s} L6 ${-14 + s}" stroke="${br}" stroke-width="5" stroke-linecap="round"/>`;
+    if (e === 'ok') {
+      g += `<path d="M-21 -4 Q-13 -14 -5 -4 M5 -4 Q13 -14 21 -4" stroke="${OL}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+      g += `<path d="M-23 -17 Q-13 -22 -5 -17 M5 -17 Q13 -22 23 -17" stroke="${br}" stroke-width="5" fill="none" stroke-linecap="round"/>`;
+      g += `<path d="M-13 ${15 + my} Q0 ${34 + my} 13 ${15 + my} Z" fill="#6b1f1f" stroke="${OL}" stroke-width="3"/><path d="M-9 ${17 + my} L9 ${17 + my}" stroke="#fff" stroke-width="4"/>`;
+    } else if (e === 'ko') {
+      g += `<ellipse cx="-12" cy="-4" rx="7" ry="8" fill="#fff" stroke="${OL}" stroke-width="2.5"/><ellipse cx="12" cy="-4" rx="7" ry="8" fill="#fff" stroke="${OL}" stroke-width="2.5"/><circle cx="-12" cy="-4" r="2.4" fill="${OL}"/><circle cx="12" cy="-4" r="2.4" fill="${OL}"/>`;
+      g += `<path d="M-22 -19 L-6 -24 M22 -19 L6 -24" stroke="${br}" stroke-width="5" stroke-linecap="round"/>`;
+      g += `<ellipse cx="0" cy="${22 + my}" rx="7" ry="9" fill="#5a1717" stroke="${OL}" stroke-width="3"/>`;
+      g += `<path d="M38 -26 C44 -16 44 -10 38 -10 C32 -10 32 -16 38 -26Z" fill="#6fc3ff" stroke="${OL}" stroke-width="2"/>`;
+    } else {
+      g += `<ellipse cx="-12" cy="-4" rx="6" ry="4.5" fill="#fff" stroke="${OL}" stroke-width="2.5"/><ellipse cx="12" cy="-4" rx="6" ry="4.5" fill="#fff" stroke="${OL}" stroke-width="2.5"/><circle cx="-11" cy="-4" r="2.6" fill="${OL}"/><circle cx="13" cy="-4" r="2.6" fill="${OL}"/>`;
+      g += brow(4);
+      g += `<path d="M-9 ${22 + my} Q0 ${19 + my} 9 ${22 + my}" stroke="${OL}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+    }
+    g += `<path d="M0 4 C-3 10 -3 12 2 12" stroke="${OL}" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".7"/>`;
+    if (!A) g += `<path d="M-19 ${15 + 1} C-11 8 -4 11 0 14 C4 11 11 8 19 16 C11 22 4 18 0 18 C-4 18 -11 22 -19 16Z" fill="#5a3d26" stroke="${OL}" stroke-width="2"/><path d="M-7 27 C-4 38 4 38 7 27 C3 30 -3 30 -7 27Z" fill="#5a3d26"/>`;
+    return g;
+  }
+  const ARM = {
+    work: [[-34, 150], [34, 150]],
+    cheer: [[-66, -16], [66, -16]],
+    panic: [[-56, 26], [56, 26]],
+    point: [[-34, 150], [76, 40]],
+  };
+  function person(w, x, y, s, expr, pose) {
+    const A = w === 'A', col = A ? '#8e949b' : '#f1f1ee', dark = A ? '#2c2d31' : '#cfcfca', sk = A ? '#e3b18b' : '#efc3a0';
+    const arms = ARM[pose] || ARM.work;
+    let g = `<g transform="translate(${x} ${y}) scale(${s})">`;
+    g += `<path d="M-48 190 C-50 120 -44 70 -22 52 L22 52 C44 70 50 120 48 190Z" fill="${col}" stroke="${OL}" stroke-width="3.5"/>`;
+    g += A ? `<path d="M-24 50 C-16 78 16 78 24 50 L30 60 C20 96 -20 96 -30 60Z" fill="${dark}" stroke="${OL}" stroke-width="3"/>` : `<path d="M-22 52 C-14 72 14 72 22 52" fill="none" stroke="${OL}" stroke-width="3"/><path d="M-3 66 L-3 96 M3 66 L3 96" stroke="${dark}" stroke-width="3"/>`;
+    [[-30, arms[0]], [30, arms[1]]].forEach(([sx, h]) => {
+      const mx = (sx + h[0]) / 2 + (sx < 0 ? -12 : 12), my = (64 + h[1]) / 2 + 10;
+      g += `<path d="M${sx} 66 Q${mx} ${my} ${h[0]} ${h[1]}" fill="none" stroke="${OL}" stroke-width="22" stroke-linecap="round"/><path d="M${sx} 66 Q${mx} ${my} ${h[0]} ${h[1]}" fill="none" stroke="${col}" stroke-width="16" stroke-linecap="round"/>`;
+      g += `<circle cx="${h[0]}" cy="${h[1]}" r="10" fill="${sk}" stroke="${OL}" stroke-width="3"/>`;
+    });
+    g += `<g>${head(w, expr)}</g></g>`;
+    return g;
+  }
+  const bar = (x, y, w, h, f, r = 0) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${f}" stroke="${OL}" stroke-width="3"/>`;
+  const sweat = (x, y) => `<path d="M${x} ${y} c6 10 6 16 0 16 c-6 0 -6 -6 0 -16z" fill="#6fc3ff" stroke="${OL}" stroke-width="2"/>`;
+
+  /* ----- fonds par situation et état ----- */
+  const BG = {
+    hack(st) {
+      const scr = st === 'ok' ? '#0b3a1e' : st === 'ko' ? '#4a0d0d' : '#061a2e';
+      let g = `<rect width="800" height="450" fill="#0b1224"/>`;
+      for (let i = 0; i < 5; i++) { g += bar(20 + i * 40, 60, 34, 300, '#1b2438', 3); for (let j = 0; j < 9; j++) g += `<circle cx="${30 + i * 40}" cy="${90 + j * 30}" r="3" fill="${st === 'ko' ? '#ff4a4a' : j % 3 ? '#41e08a' : '#59a8ff'}"/>`; }
+      g += bar(250, 40, 300, 170, scr, 8);
+      if (st === 'action') for (let i = 0; i < 7; i++) g += `<rect x="268" y="${58 + i * 20}" width="${60 + (i * 53) % 150}" height="8" rx="3" fill="#41e08a" opacity="${0.35 + (i % 3) * 0.2}"/>`;
+      if (st === 'ok') g += `<circle cx="400" cy="112" r="42" fill="none" stroke="#41e08a" stroke-width="10"/><path d="M380 112 l14 16 l28 -34" fill="none" stroke="#41e08a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><text x="400" y="190" text-anchor="middle" font-family="Impact,Arial Black,sans-serif" font-size="22" fill="#41e08a">ACCÈS ACCORDÉ</text>`;
+      if (st === 'ko') g += `<path d="M360 70 l80 80 M440 70 l-80 80" stroke="#ff4a4a" stroke-width="12" stroke-linecap="round"/><text x="400" y="190" text-anchor="middle" font-family="Impact,Arial Black,sans-serif" font-size="22" fill="#ff6a6a">INTRUSION DÉTECTÉE</text>`;
+      return g;
+    },
+    coffre(st) {
+      let g = `<rect width="800" height="450" fill="#1a1a1f"/><rect y="0" width="800" height="60" fill="#121216"/>`;
+      g += `<circle cx="400" cy="190" r="150" fill="#555b66" stroke="${OL}" stroke-width="6"/>`;
+      if (st === 'ok') g += `<circle cx="400" cy="190" r="128" fill="#ffd23f" opacity=".95"/>` + [0, 1, 2, 3, 4].map((i) => bar(300 + i * 34, 220 - (i % 2) * 30, 30, 20, '#ffb800', 2)).join('') + `<path d="M400 190 L250 40 L550 40Z" fill="#ffe27a" opacity=".25"/>`;
+      else g += `<circle cx="400" cy="190" r="120" fill="#6d7480" stroke="${OL}" stroke-width="4"/><circle cx="400" cy="190" r="26" fill="#3f444d" stroke="${OL}" stroke-width="4"/>` + [0, 60, 120, 180, 240, 300].map((a) => `<line x1="400" y1="190" x2="${400 + 100 * Math.cos(a * Math.PI / 180)}" y2="${190 + 100 * Math.sin(a * Math.PI / 180)}" stroke="${OL}" stroke-width="7" stroke-linecap="round"/>`).join('');
+      if (st === 'action') g += `<g fill="#ffd23f" stroke="${OL}" stroke-width="1.5"><path d="M420 200 l22 -14 l-8 20 l24 -4 l-26 14z"/><path d="M380 180 l-18 -16 l22 6 l-4 -22 l16 20z"/></g>`;
+      if (st === 'ko') g += `<rect width="800" height="450" fill="#ff2a2a" opacity=".18"/><circle cx="400" cy="60" r="22" fill="#ff3b3b" stroke="${OL}" stroke-width="4"/><path d="M400 60 L250 0 M400 60 L550 0" stroke="#ff7a7a" stroke-width="6" opacity=".6"/><ellipse cx="330" cy="150" rx="46" ry="30" fill="#777" opacity=".7"/><ellipse cx="470" cy="120" rx="56" ry="34" fill="#888" opacity=".6"/>`;
+      return g;
+    },
+    garde(st) {
+      let g = `<rect width="800" height="450" fill="#161a24"/><path d="M0 0 L800 0 L560 110 L240 110Z" fill="#1d2230"/><path d="M0 450 L240 300 L560 300 L800 450Z" fill="#232938"/><path d="M240 110 L240 300 M560 110 L560 300" stroke="${OL}" stroke-width="3"/>`;
+      g += bar(250, 120, 300, 180, '#10131b', 2);
+      const gx = st === 'ok' ? 280 : st === 'ko' ? 560 : 520, gs = st === 'ko' ? 1.15 : 0.85, gy = st === 'ko' ? 210 : 232;
+      if (st !== 'ok') g += `<path d="M${gx} ${gy - 20} L${st === 'ko' ? 80 : 300} ${st === 'ko' ? 450 : 320} L${st === 'ko' ? 560 : 420} 450Z" fill="#fff5b0" opacity="${st === 'ko' ? .5 : .25}"/>`;
+      g += `<g transform="translate(${gx} ${gy}) scale(${gs}) ${st === 'ok' ? 'scale(-1 1)' : ''}"><path d="M-30 100 C-34 40 -24 10 0 10 C24 10 34 40 30 100Z" fill="#26324f" stroke="${OL}" stroke-width="3.5"/><circle cx="0" cy="-8" r="22" fill="#d9a784" stroke="${OL}" stroke-width="3.5"/><path d="M-26 -14 C-24 -40 24 -40 26 -14Z" fill="#1d2a4a" stroke="${OL}" stroke-width="3.5"/><rect x="-28" y="-14" width="56" height="7" rx="3" fill="#1d2a4a" stroke="${OL}" stroke-width="3"/><path d="M26 40 L58 30" stroke="${OL}" stroke-width="14" stroke-linecap="round"/><path d="M26 40 L58 30" stroke="#26324f" stroke-width="9" stroke-linecap="round"/><rect x="54" y="20" width="22" height="14" rx="3" fill="#444" stroke="${OL}" stroke-width="2.5"/></g>`;
+      if (st === 'ko') g += `<g font-family="Impact,Arial Black,sans-serif"><path d="M610 70 L760 70 L760 130 L640 130 L620 150 L624 130 L610 130Z" fill="#fff" stroke="${OL}" stroke-width="4"/><text x="685" y="114" text-anchor="middle" font-size="40" fill="#e11">HÉ ! LÀ !</text></g>`;
+      if (st === 'ok') g += `<g font-family="Impact,Arial Black,sans-serif"><path d="M150 70 L300 70 L300 130 L196 130 L180 150 L184 130 L150 130Z" fill="#fff" stroke="${OL}" stroke-width="4"/><text x="225" y="112" text-anchor="middle" font-size="34" fill="#333">Rien ici…</text></g>`;
+      return g;
+    },
+    fuite(st) {
+      let g = `<rect width="800" height="450" fill="#0e1424"/><circle cx="640" cy="90" r="38" fill="${st === 'ok' ? '#ffcf5a' : '#e8ecf5'}" opacity="${st === 'ok' ? .95 : .75}"/>`;
+      g += `<path d="M0 260 L800 260 L800 450 L0 450Z" fill="#20242e"/><path d="M0 330 L800 330" stroke="#d8d8d8" stroke-width="6" stroke-dasharray="40 30"/>`;
+      for (let i = 0; i < 6; i++) g += bar(20 + i * 130, 140 + (i * 37) % 70, 100, 130 - (i * 37) % 70, '#2a3146', 2) + `<rect x="${40 + i * 130}" y="${160 + (i * 37) % 70}" width="14" height="14" fill="#ffe27a" opacity=".7"/>`;
+      if (st === 'ko') g += `<rect width="800" height="450" fill="#2a60ff" opacity=".13"/><g><rect x="90" y="250" width="200" height="86" rx="12" fill="#f3f3f3" stroke="${OL}" stroke-width="4"/><rect x="110" y="236" width="160" height="20" rx="6" fill="#ff3b3b" stroke="${OL}" stroke-width="3"/><circle cx="130" cy="246" r="9" fill="#ff3b3b"/><circle cx="250" cy="246" r="9" fill="#3b78ff"/></g><g><rect x="510" y="250" width="200" height="86" rx="12" fill="#f3f3f3" stroke="${OL}" stroke-width="4"/><rect x="530" y="236" width="160" height="20" rx="6" fill="#3b78ff" stroke="${OL}" stroke-width="3"/><circle cx="550" cy="246" r="9" fill="#3b78ff"/><circle cx="670" cy="246" r="9" fill="#ff3b3b"/></g>`;
+      if (st === 'ok') g += `<path d="M0 260 L800 200" stroke="#ffcf5a" stroke-width="0" /><rect y="150" width="800" height="110" fill="#ff9a4a" opacity=".2"/>`;
+      if (st === 'action') g += `<g><rect x="30" y="270" width="150" height="60" rx="10" fill="#f3f3f3" stroke="${OL}" stroke-width="4"/><circle cx="60" cy="262" r="8" fill="#ff3b3b"/><circle cx="150" cy="262" r="8" fill="#3b78ff"/></g><path d="M170 275 L260 260 L260 330 L170 320Z" fill="#fff6a0" opacity=".25"/>`;
+      return g;
+    },
+  };
+  /* ----- avant-plan ----- */
+  const FG = {
+    hack: (st) => bar(0, 372, 800, 90, '#232a3a') + bar(250, 346, 300, 30, '#3a4254', 6) + `<rect x="262" y="352" width="276" height="10" rx="3" fill="${st === 'ko' ? '#ff6a6a' : '#59a8ff'}" opacity=".6"/>`,
+    coffre: (st) => bar(0, 392, 800, 70, '#2a2a30') + (st === 'ok' ? [0, 1, 2].map((i) => bar(110 + i * 70, 372 - (i === 1 ? 14 : 0), 62, 28, '#ffb800', 3)).join('') + bar(590, 360, 100, 50, '#3b2f1e', 8) : st === 'action' ? bar(560, 360, 190, 36, '#e0a030', 6) + bar(660, 334, 60, 26, '#444', 4) : bar(120, 372, 120, 40, '#3b2f1e', 8)),
+    garde: () => bar(0, 372, 800, 90, '#3a2d1f') + bar(80, 330, 190, 80, '#6b4e2e', 4) + bar(530, 330, 190, 80, '#6b4e2e', 4) + `<path d="M90 330 L260 410 M260 330 L90 410" stroke="${OL}" stroke-width="3" opacity=".4"/><path d="M540 330 L710 410 M710 330 L540 410" stroke="${OL}" stroke-width="3" opacity=".4"/>`,
+    fuite: (st) => bar(0, 358, 800, 100, '#14161c') + `<rect x="60" y="340" width="680" height="30" rx="14" fill="#2c303a" stroke="${OL}" stroke-width="4"/><circle cx="400" cy="372" r="46" fill="none" stroke="${OL}" stroke-width="14"/><circle cx="400" cy="372" r="46" fill="none" stroke="#3b3f4a" stroke-width="8"/>` + (st === 'ok' ? [0, 1].map((i) => bar(80 + i * 560, 384, 110, 62, '#2f7d4a', 10) + `<text x="${135 + i * 560}" y="425" text-anchor="middle" font-family="Impact,Arial Black,sans-serif" font-size="30" fill="#bff0c8">$$$</text>`).join('') : ''),
+  };
+  const LAYOUT = { hack: [330, 520, 250], coffre: [330, 470, 280], garde: [220, 600, 270], fuite: [260, 540, 240] };
+  const CAP = {
+    hack: { action: 'Piratage du système de sécurité…', ok: 'Accès accordé : les caméras sont à nous !', ko: 'Le pare-feu les a repérés !' },
+    coffre: { action: 'Perçage de la chambre forte…', ok: 'Ça s\'ouvre. Le butin est là.', ko: 'Le foret casse. L\'alarme se déclenche !' },
+    garde: { action: 'Ne faites pas un bruit…', ok: 'Le garde passe son chemin.', ko: 'Repérés par le garde !' },
+    fuite: { action: 'Direction la camionnette…', ok: 'Ils ont filé avec le butin !', ko: 'La police bloque la route !' },
+  };
+  const TITLE = { hack: 'Piratage', coffre: 'La chambre forte', garde: 'Face au garde', fuite: 'La fuite' };
+  const STAMP = { action: ['EN COURS', '#ffcf5a', '#14110f'], ok: ['RÉUSSI', '#41e08a', '#06240f'], ko: ['RATÉ', '#ff4a4a', '#fff'] };
+
+  function svg(sit, st, opts) {
+    opts = opts || {};
+    if (!BG[sit]) sit = 'hack';
+    if (!STAMP[st]) st = 'action';
+    const [py, ax, bx] = [LAYOUT[sit][0] - 70, LAYOUT[sit][1], LAYOUT[sit][2]];
+    const expr = st === 'ok' ? 'ok' : st === 'ko' ? 'ko' : 'focus';
+    const pose = st === 'ok' ? 'cheer' : st === 'ko' ? 'panic' : 'work';
+    let s = `<svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${TITLE[sit]} : ${CAP[sit][st]}" style="width:100%;height:100%;display:block">`;
+    s += BG[sit](st);
+    const ya = LAYOUT[sit][0], pa = person('A', LAYOUT[sit][2], ya - 30, 1.25, expr, pose), pb = person('B', LAYOUT[sit][1], ya - 30, 1.25, expr, pose);
+    s += pa + pb;
+    s += FG[sit](st);
+    if (st === 'ko') s += `<rect width="800" height="450" fill="#ff0000" opacity=".08"/>`;
+    // étiquettes
+    if (opts.names) [[opts.names[0], LAYOUT[sit][2]], [opts.names[1], LAYOUT[sit][1]]].forEach(([n, x]) => { if (n) s += `<g font-family="Impact,Arial Black,sans-serif"><rect x="${x - 70}" y="392" width="140" height="26" rx="4" fill="#14110f" opacity=".85"/><text x="${x}" y="412" text-anchor="middle" font-size="17" fill="#fff" letter-spacing="1">${String(n).replace(/[<&]/g, '').slice(0, 14).toUpperCase()}</text></g>`; });
+    s += `<rect y="0" width="800" height="40" fill="#14110f" opacity=".82"/><text x="18" y="28" font-family="Impact,Arial Black,sans-serif" font-size="22" fill="#fff" letter-spacing="2">${TITLE[sit].toUpperCase()}</text>`;
+    const [lab, bg, fg] = STAMP[st];
+    s += `<g transform="rotate(-5 700 24)"><rect x="620" y="6" width="164" height="36" rx="4" fill="${bg}" stroke="${OL}" stroke-width="3"/><text x="702" y="33" text-anchor="middle" font-family="Impact,Arial Black,sans-serif" font-size="24" fill="${fg}" letter-spacing="2">${lab}</text></g>`;
+    s += `<rect y="418" width="800" height="32" fill="#14110f"/><text x="400" y="441" text-anchor="middle" font-family="Georgia,serif" font-style="italic" font-size="19" fill="#f4ead2">${CAP[sit][st]}</text>`;
+    return s + '</svg>';
+  }
+  window.ValmontScenes = { svg, situations: Object.keys(TITLE).map((k) => ({ id: k, name: TITLE[k] })), states: [['action', 'En cours'], ['ok', 'Réussi'], ['ko', 'Raté']] };
+})();
+
+</script>
 <script>
 /* Plans de la Banque Valmont & Fils — dessin architectural des 4 niveaux.
    Partagé par le dossier du MJ et l'écran de projection.
@@ -1355,6 +1513,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     const s = Object.assign(fresh(), d || {});
     s.show = Object.assign(fresh().show, (d && d.show) || {});
     s.banner = Object.assign({ on: false, text: '' }, (d && d.banner) || {});
+    s.scene = (d && d.scene) || null;
     s.team = Array.isArray(s.team) ? s.team.slice(0, 8) : [];
     if (!Array.isArray(s.gone)) s.gone = [];
     if (!s.board || typeof s.board !== 'object') s.board = {};
@@ -1780,6 +1939,16 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
       </div>`).join('') : '<p class="empty">Le MJ ajoute les braqueurs depuis la console.</p>';
     $('loot').textContent = euro(s.loot);
     $('log').innerHTML = s.log.length ? s.log.slice(0, 8).map((l) => `<div><b>${hhmm(l.t)}</b><span>${esc(l.text)}</span></div>`).join('') : '<p class="empty">Les décisions de l\'équipe s\'afficheront ici.</p>';
+    { const sc = s.scene, key = sc && sc.on ? sc.sit + '|' + sc.st + '|' + sc.at : '';
+      if (key !== lastScene) {
+        lastScene = key;
+        const box = $('scenefx');
+        if (key && window.ValmontScenes) {
+          const nm = (s.team || []).map((m) => m.name);
+          box.innerHTML = `<div class="frame">${ValmontScenes.svg(sc.sit, sc.st, { names: nm })}</div>`; box.hidden = false;
+          if (!isConsole() && lastScene !== null) { try { ValmontSound.play(sc.st === 'ok' ? 'success' : sc.st === 'ko' ? 'fail' : 'beep'); } catch (e) {} }
+        } else box.hidden = true;
+      } }
     $('banner').hidden = !(s.banner.on && s.banner.text);
     $('bannerText').textContent = s.banner.text;
     if (s.roll && s.roll.at !== lastRollAt) {
@@ -1794,6 +1963,7 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     } else if (lastRollAt === null) lastRollAt = s.roll ? s.roll.at : 0;
   }
 
+  let lastScene = '';
   let confirmDel = null, confirmReset = false;
   function renderSalon() {
     const box = $('cSalon'); if (!box) return;
@@ -1860,6 +2030,10 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     $('cAuto').className = 'b sm ' + (s.auto ? 'on' : ''); $('cAuto').textContent = 'Sons automatiques : ' + (s.auto ? 'oui' : 'non');
     $('quickBanner').innerHTML = QUICK_BANNER.map((q) => `<button class="b sm ${s.banner.on && s.banner.text === q ? 'on' : ''}" data-banner="${esc(q)}">${esc(q)}</button>`).join('');
     $('bannerOff').disabled = !s.banner.on;
+    if ($('cScenes') && window.ValmontScenes) {
+      $('cScenes').innerHTML = ValmontScenes.situations.map((x) => `<div class="camrow"><span>${esc(x.name)}</span><span class="seg">${ValmontScenes.states.map(([k, l]) => `<button class="b sm ${s.scene && s.scene.on && s.scene.sit === x.id && s.scene.st === k ? 'on go' : ''}" data-scene="${x.id}|${k}">${l}</button>`).join('')}</span></div>`).join('');
+      $('sceneOff').disabled = !(s.scene && s.scene.on);
+    }
     $('resetBtn').textContent = confirmReset ? 'Toucher encore pour confirmer' : 'Nouvelle partie';
   }
 
@@ -1987,6 +2161,8 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
     if (d.zoom) { zoom = !zoom; return render(); }
     if (d.fog) return commit((s) => { s.fog = !s.fog; });
     if (d.out) { const id = selected; selected = null; return commit((s) => { const m = s.team.find((t) => t.id === id); if (m) { m.floor = ''; m.x = null; m.y = null; m.room = ''; } }); }
+    if (d.scene) { const [sit, st] = d.scene.split('|'); return commit((s) => { s.scene = { on: true, sit, st, at: Date.now() }; }); }
+    if (b.id === 'sceneOff') return commit((s) => { s.scene = null; });
     if (d.camset) { const [i, n] = d.camset.split('|'); return commit((s) => { s.vis[`${s.floor}|cam|${i}`] = +n; if (+n === 2) logAdd(s, 'Une caméra est coupée.'); }); }
     if (d.all) {
       const [kind, v] = d.all.split('|'), info = P.info(state.floor);
