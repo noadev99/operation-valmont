@@ -97,6 +97,10 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
 .lead.done { opacity: .55; }
 .boost { display: flex; gap: 10px; align-items: center; font-size: .92rem; }
 .boost input { width: 22px; height: 22px; accent-color: var(--amber); }
+.known summary { cursor: pointer; font-size: 1.05rem; }
+.known .kn { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 4px; }
+.known .kn > b { font: 600 .74rem var(--mono, monospace); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.known .kn p { margin: 0; font-size: .95rem; line-height: 1.45; }
 .clue { border-left: 3px solid var(--green); background: var(--panel); padding: 10px 12px; display: grid; gap: 4px; }
 .clue.ko { border-left-color: var(--muted); }
 .clue b { font-size: .95rem; }
@@ -685,7 +689,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   function ensureFab() {
     let f = document.getElementById('fab');
     if (S.role < 0 || embedded === 'none') { if (f) f.remove(); return; }
-    if (!f) { f = document.createElement('button'); f.id = 'fab'; f.type = 'button'; f.textContent = 'Lancer un dé'; f.style.cssText = 'position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:30;padding:16px 22px;font:700 1.05rem var(--body);background:var(--amber,#e8a020);color:#14110f;border:3px solid #14110f;box-shadow:0 6px 18px rgba(0,0,0,.5);border-radius:999px;touch-action:manipulation'; document.body.appendChild(f); }
+    if (!f) { f = document.createElement('button'); f.id = 'fab'; f.type = 'button'; f.textContent = 'Lancer un dé'; f.style.cssText = 'position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:30;padding:16px 22px;font:700 1.05rem var(--body);background:var(--amber,#e8a020);color:#14110f;border:3px solid #14110f;box-shadow:0 6px 18px rgba(0,0,0,.5);border-radius:999px;touch-action:manipulation'; document.body.appendChild(f); document.body.style.paddingBottom = '96px'; }
   }
   function render() {
     document.getElementById('who').textContent = S.name ? S.name + (role() ? ' · ' + role().name : '') : '';
@@ -742,6 +746,19 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
   }
 
   /* ---------- 3. repérage ---------- */
+  /* ce que tout le monde sait avant le repérage (infos publiques) ; les secrets restent à trouver */
+  function knownHtml(open) {
+    return `<details class="card known" ${open ? 'open' : ''}><summary><b>Ce que vous savez déjà</b></summary>
+      <div class="kn"><b>La mission</b><p>Le Notaire veut une <b>clé USB</b> rangée dans le <b>casier 117</b> de la chambre forte : 100 000 € pour vous. Tout le reste (lingots, liquide, bijoux) est à vous. Sortez avant l'aube, et avant que la police boucle le quartier.</p></div>
+      <div class="kn"><b>La banque</b><p>Banque Valmont &amp; Fils, place de la Bourse : un sous-sol avec la chambre forte, un rez-de-chaussée, un 1er étage et un toit avec une verrière. Ce soir, le gala des 150 ans au 1er étage (60 invités). Demain à 6h00, un fourgon blindé vide la chambre forte.</p></div>
+      <div class="kn"><b>Les personnes</b>
+        <p><b>Hélène Valmont</b> · la directrice, héritière de la banque. C'est elle qui reçoit au gala.</p>
+        <p><b>Paul Ferrand</b> · le directeur d'agence, invité au gala.</p>
+        <p><b>Brigitte Kessler</b> · la cheffe de la sécurité, ancienne militaire.</p>
+        <p><b>Le Notaire</b> · votre commanditaire, un homme en imperméable.</p></div>
+      <div class="kn"><b>Ce que vous ignorez encore</b><p>Comment s'ouvre la chambre forte, où sont les gardes et les caméras, et ce que cachent ces personnes. C'est le but du repérage.</p></div>
+    </details>`;
+  }
   function reperage() {
     const P = S.prep, now = Date.now();
     if (!P.start) {
@@ -749,6 +766,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
         <div class="card"><h2>Le repérage</h2>
           <p>Avant le casse, tu as <b>5 jetons d'enquête</b>. Chaque piste coûte 1 jeton et se joue tout de suite : tu lances le dé et la télé retourne la carte.</p>
           <p>Tu ne pourras pas tout suivre : choisis bien, et partagez-vous les pistes avec ton équipe. Quand tu débloques une piste cachée, donne le <b>mot-clé</b> à tes coéquipiers. Un <b>20</b> au dé te rend ton jeton.</p></div>
+        ${knownHtml(true)}
         <button class="btn go full" id="startPrep">Commencer le repérage</button>
       </div>`;
       return;
@@ -759,6 +777,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     $view.innerHTML = `<div style="display:grid;gap:12px">
       <div class="clock ${P.mjAt && left < 120000 ? 'late' : ''}"><div><span>Jetons d'enquête</span><br><b id="prepClock" style="letter-spacing:.15em">${'●'.repeat(Math.max(0, tk))}<span style="opacity:.25">${'●'.repeat(Math.max(0, 5 - tk))}</span></b>${P.mjAt ? ` <span class="muted" style="font-size:.8rem">· ${mmss(left)}</span>` : ''}</div><div style="text-align:right"><span>Pistes</span><br><b style="font-size:1.4rem">${Object.keys(P.done).length}</b></div></div>
       ${res ? resultCard(lead(S.last), res, true) : ''}
+      ${knownHtml(false)}
       ${cur ? busyCard(cur) : over ? `<div class="card"><h2>Repérage terminé</h2><p>Tu n'as plus de jeton. Montre ton carnet à ton équipe et passez au plan. Les infos marquées « Pour le MJ » sont à lui dire.</p><button class="btn go full" data-next="fiche">Ouvrir ma fiche</button></div>` : `
         <label class="boost"><input type="checkbox" id="boost" ${S.boost ? 'checked' : ''} ${S.en < 1 ? 'disabled' : ''}><span>Forcer la prochaine piste : <b>+3</b> au jet, coûte 1 énergie (il t'en reste ${S.en})</span></label>
         <div class="leads">${visible().filter((l) => !P.done[l.id]).map((l) => { const tight = false; return `
@@ -818,6 +837,7 @@ input[type=text] { font: 500 1.05rem var(--body); background: var(--bg); color: 
     const clues = S.prep.order.map((id) => [lead(id), S.prep.done[id]]).filter(([l, x]) => l && x);
     $view.innerHTML = `<div style="display:grid;gap:12px">
       <div class="me"><span class="pic">${pic(r.name)}</span><div><b>${esc(S.name)}</b><span>${esc(r.name)}</span></div></div>
+      ${knownHtml(false)}
       <div class="pool">
         <div class="stp"><button data-pool="hp" data-d="-1" aria-label="Perdre 1 PV">−</button><div><small>PV</small><b class="hp">${S.hp}/${r.hp}</b></div><button data-pool="hp" data-d="1" aria-label="Regagner 1 PV">+</button></div>
         <div class="stp"><button data-pool="en" data-d="-1" aria-label="Dépenser 1 énergie">−</button><div><small>ÉNERGIE</small><b class="en">${S.en}/${r.en}</b></div><button data-pool="en" data-d="1" aria-label="Regagner 1 énergie">+</button></div>

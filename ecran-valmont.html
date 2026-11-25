@@ -2086,6 +2086,12 @@ input, select { font: 500 1rem var(--body); background: var(--bg); color: var(--
           feedAdd(s, label + (t === 140 ? ' : bonne fenêtre pour le coffre.' : t === 150 ? ' : la coupe d\'Hélène reste sur le buffet.' : t === 210 ? ' : le PC sécurité est vide 5 minutes.' : t === 300 ? ' : cachette Discrétion 15.' : ''));
         }
       });
+      // rappels au MJ : les infos clés que personne n'a trouvées au repérage
+      const found = (id) => s.board && s.board[id] && s.board[id].st === 'ok';
+      [[60, 'presse', 'Personne n\'a lu la presse : ils ignorent qu\'il faut le code à 8 chiffres + l\'empreinte d\'Hélène. Fais-le dire au barman, ou par un invité au gala.'],
+       [110, 'cercle', 'Personne n\'a découvert la dette de Paul Ferrand (60 000 €, il connaît les 4 derniers chiffres). Glisse-la : il boit trop au bar dès 23h, un invité ivre le chambre, ou ses reconnaissances de dettes sont dans son bureau (R2).'],
+       [125, 'helene', 'Personne ne sait qu\'Hélène monte à son bureau à 23h20 ni que le tableau cache le coffre. Un serveur peut dire : « Madame monte toujours se repoudrer avant son discours. »']]
+        .forEach(([t, id, msg]) => { const k = 'hint-' + id; if (old < t && s.t >= t && !found(id) && !s.fired.includes(k)) { s.fired.push(k); feedAdd(s, 'Rappel : ' + msg, true); } });
       // le calme revient : 15 minutes de nuit sans que l'alerte monte
       if (s.au.calm && s.alert > 0 && s.alert < 7 && s.t - s.calmAt >= 15) { s.alert -= 1; s.calmAt = s.t; logAdd(s, 'Le calme revient : alerte ' + s.alert); }
     });
